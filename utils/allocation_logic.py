@@ -45,25 +45,14 @@ def load_settings(db):
 # ---------- Allocation Pattern ----------
 def get_allocation_pattern(people, max_per_slot):
     allocation = []
-   
     if 4 <= people <= 7:
         allocation = [people]
     elif people == 8:
-        allocation = [4, 4]
+        allocation = [6, 2]
     elif people == 9:
-        allocation = [5, 4]
+        allocation = [6, 3]
     elif people == 10:
-        allocation = [5, 5]
-    elif people == 11:
-        allocation = [5, 6]
-    elif people == 12:
-        allocation = [6, 6]
-    elif people == 13:
-        allocation = [7, 6]
-    elif people == 14:
-        allocation = [7, 7]
-    # ...keep the rest of your logic
-
+        allocation = [6, 4]
     elif 11 <= people <= max_per_slot:
         rafts_needed = math.ceil(people / 7.0)
         surplus = people - 6 * rafts_needed
