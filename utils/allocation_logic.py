@@ -53,7 +53,15 @@ def get_allocation_pattern(people, max_per_slot):
         allocation = [6, 3]
     elif people == 10:
         allocation = [6, 4]
-    elif 11 <= people <= max_per_slot:
+    elif people == 11:
+        allocation = [6, 5]
+    elif people == 12:
+        allocation = [6, 6]
+    elif people == 13:
+        allocation = [7, 6]
+    elif people == 14:
+        allocation = [7, 7]
+    elif 14 <= people <= max_per_slot:
         rafts_needed = math.ceil(people / 7.0)
         surplus = people - 6 * rafts_needed
         if surplus >= 0:
