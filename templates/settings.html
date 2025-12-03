@@ -1,0 +1,367 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<style>
+  /* Page background and settings container styles for wider screens */
+  body { background-color: #f8f9fa; }
+  .settings-container {
+    max-width: 900px;
+    margin: 40px auto;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+  }
+  @media (max-width: 576px) {
+    .settings-container { padding: 20px; margin: 20px; }
+  }
+</style>
+
+<div class="container mt-5 d-flex justify-content-center">
+  <div class="settings-container w-100" style="max-width: 900px;">
+    <h2 class="text-center fw-bold text-primary mb-4">⚙️ System Settings</h2>
+
+  {% if message %}
+  <div id="success-message" class="mb-4 p-3 rounded bg-green-100 text-green-800 border border-green-300">
+    {{ message }}
+  </div>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div id="flash-message" class="mb-4 p-3 rounded {% if category == 'success' %}bg-green-100 text-green-800 border border-green-300{% elif category == 'error' %}bg-red-100 text-red-800 border border-red-300{% else %}bg-blue-100 text-blue-800 border border-blue-300{% endif %}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form id="settings-form" method="POST" class="grid grid-cols-1 gap-6">
+    <div>
+      <label class="block text-gray-700 font-semibold mb-2">Booking Date Range</label>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Booking Start Date</label>
+          <input type="date" 
+                 id="start_date" 
+                 name="start_date" 
+                 value="{{ settings.start_date if settings.start_date else '' }}" 
+                 class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300" 
+                 required>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Booking End Date</label>
+          <input type="date" 
+                 id="end_date" 
+                 name="end_date" 
+                 value="{{ settings.end_date if settings.end_date else '' }}" 
+                 class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300" 
+                 required>
+        </div>
+      </div>
+      <div id="days-display" class="mt-2 text-sm text-gray-600">
+        <span id="calculated-days">-</span> booking days
+      </div>
+      <div id="date-error" class="mt-2 text-sm text-red-600 hidden"></div>
+      <input type="hidden" id="days" name="days" value="{{ settings.days if settings.days else '' }}">
+    </div>
+
+    <div>
+      <label class="block text-gray-700 font-semibold mb-2">Rafts per Slot</label>
+      <input type="number" name="rafts_per_slot" value="{{ settings.rafts_per_slot }}" min="1" class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300" required>
+    </div>
+
+    <div>
+      <label class="block text-gray-700 font-semibold mb-2">Capacity per Raft</label>
+      <input type="number" name="capacity" value="{{ settings.capacity }}" min="1" class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300" required>
+    </div>
+
+    <div>
+      <label class="block text-gray-700 font-semibold mb-2">Time Slots (comma separated)</label>
+      <textarea name="time_slots" rows="2" class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300" required>{{ ', '.join(settings.time_slots) }}</textarea>
+      <p class="text-sm text-gray-500 mt-1">Example: 7:00–9:00, 10:00–12:00, 13:00–15:00</p>
+    </div>
+
+    <!-- Amount Settings Section -->
+    <div class="border-t pt-6 mt-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">💰 Amount Settings</h3>
+      <p class="text-sm text-gray-600 mb-4">Set the per-person amount for bookings based on the day of week.</p>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Monday–Friday Amount (per person)</label>
+          <div class="flex items-center">
+            <span class="text-gray-700 mr-2">$</span>
+            <input type="number" 
+                   name="weekday_amount" 
+                   id="weekday_amount"
+                   value="{{ settings.weekday_amount if settings.weekday_amount else '' }}" 
+                   placeholder="0.00"
+                   step="0.01"
+                   min="0"
+                   class="flex-1 border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300">
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Applied to Mon, Tue, Wed, Thu, Fri bookings</p>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Saturday Amount (per person)</label>
+          <div class="flex items-center">
+            <span class="text-gray-700 mr-2">$</span>
+            <input type="number" 
+                   name="saturday_amount" 
+                   id="saturday_amount"
+                   value="{{ settings.saturday_amount if settings.saturday_amount else '' }}" 
+                   placeholder="0.00"
+                   step="0.01"
+                   min="0"
+                   class="flex-1 border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300">
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Applied to Saturday bookings (overrides weekday amount)</p>
+        </div>
+      </div>
+      
+      <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <p class="text-sm text-blue-900">
+          <strong>Info:</strong> Total amount for a booking = Group Size × Applicable Amount
+        </p>
+        <p class="text-xs text-blue-800 mt-2">
+          Example: Group of 4 on Friday with $25/person = $100 total
+        </p>
+      </div>
+    </div>
+
+    <button type="submit" id="save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow">
+      💾 Save Settings
+    </button>
+  </form>
+
+  <!-- Delete Bookings by Date Section -->
+  <div class="mt-8 pt-6 border-t border-gray-300">
+    <h3 class="text-xl font-semibold mb-4 text-red-700">🗑️ Delete Bookings by Date</h3>
+    <p class="text-sm text-gray-600 mb-4">Warning: This action will permanently delete all bookings for the selected date. This cannot be undone.</p>
+    
+    <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+      <div class="flex items-center gap-2">
+        <label for="deleteDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Select Date:</label>
+        <input type="date" 
+               id="deleteDate" 
+               name="deleteDate"
+               class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500">
+      </div>
+      <button onclick="handleDeleteBookings()" 
+              id="delete-btn"
+              class="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-2 rounded-lg shadow transition-colors">
+        🗑️ Delete Bookings
+      </button>
+    </div>
+    
+    <div id="delete-result" class="mt-4 hidden"></div>
+  </div>
+</div>
+
+<script>
+// Calculate days from date range
+function calculateDays() {
+  const startDateInput = document.getElementById('start_date');
+  const endDateInput = document.getElementById('end_date');
+  const daysDisplay = document.getElementById('calculated-days');
+  const daysHidden = document.getElementById('days');
+  const errorDiv = document.getElementById('date-error');
+  const saveBtn = document.getElementById('save-btn');
+  
+  const startDate = startDateInput.value;
+  const endDate = endDateInput.value;
+  
+  // Clear previous errors
+  errorDiv.classList.add('hidden');
+  errorDiv.textContent = '';
+  
+  if (!startDate || !endDate) {
+    daysDisplay.textContent = '-';
+    daysHidden.value = '';
+    return;
+  }
+  
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Validate date range
+  if (end < start) {
+    errorDiv.textContent = 'End date must be greater than or equal to start date.';
+    errorDiv.classList.remove('hidden');
+    daysDisplay.textContent = '-';
+    daysHidden.value = '';
+    saveBtn.disabled = true;
+    return;
+  }
+  
+  // Calculate days: end_date - start_date + 1
+  const diffTime = end - start;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  
+  daysDisplay.textContent = diffDays;
+  daysHidden.value = diffDays;
+  saveBtn.disabled = false;
+}
+
+// Auto-refresh settings display after successful save
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('settings-form');
+  const saveBtn = document.getElementById('save-btn');
+  const startDateInput = document.getElementById('start_date');
+  const endDateInput = document.getElementById('end_date');
+  
+  // Calculate days on page load if dates are present
+  calculateDays();
+  
+  // Recalculate days when either date changes
+  startDateInput.addEventListener('change', calculateDays);
+  endDateInput.addEventListener('change', calculateDays);
+  
+  // If there's a success message, the form was just submitted successfully
+  const successMsg = document.getElementById('success-message') || document.getElementById('flash-message');
+  if (successMsg && successMsg.textContent.includes('✅')) {
+    // Settings were just updated - refresh the page data after a short delay
+    // This ensures any dependent views get fresh data
+    console.log('Settings updated successfully. System will use new values immediately.');
+    
+    // Optional: Trigger a refresh of other open tabs/windows via localStorage event
+    if (typeof(Storage) !== "undefined") {
+      localStorage.setItem('settings_updated', Date.now().toString());
+      localStorage.removeItem('settings_updated'); // Clean up
+    }
+  }
+  
+  // Handle form submission
+  form.addEventListener('submit', function(e) {
+    // Validate date range before submission
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+    
+    if (!startDate || !endDate) {
+      e.preventDefault();
+      alert('Please select both start and end dates.');
+      return;
+    }
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (end < start) {
+      e.preventDefault();
+      alert('End date must be greater than or equal to start date.');
+      return;
+    }
+    
+    // Ensure days is calculated
+    calculateDays();
+    const days = document.getElementById('days').value;
+    if (!days || parseInt(days) < 1) {
+      e.preventDefault();
+      alert('Invalid date range. Please select valid start and end dates.');
+      return;
+    }
+    
+    saveBtn.disabled = true;
+    saveBtn.textContent = '💾 Saving...';
+    // Form will submit normally, page will reload with updated values
+  });
+});
+
+// Listen for settings updates from other tabs
+window.addEventListener('storage', function(e) {
+  if (e.key === 'settings_updated') {
+    // Reload page to get fresh settings
+    window.location.reload();
+  }
+});
+
+// Delete Bookings by Date Functionality
+async function handleDeleteBookings() {
+  const deleteDate = document.getElementById('deleteDate').value;
+  const deleteBtn = document.getElementById('delete-btn');
+  const resultDiv = document.getElementById('delete-result');
+  
+  if (!deleteDate) {
+    showDeleteResult('Please select a date first.', 'error');
+    return;
+  }
+  
+  // Confirmation dialog
+  const confirmed = confirm(
+    `⚠️ WARNING: This will permanently delete ALL bookings for ${deleteDate}.\n\n` +
+    `This action cannot be undone. Are you absolutely sure you want to proceed?`
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  // Double confirmation for safety
+  const doubleConfirm = confirm(
+    `Final confirmation: Delete all bookings for ${deleteDate}?\n\n` +
+    `Click OK to proceed with deletion.`
+  );
+  
+  if (!doubleConfirm) {
+    return;
+  }
+  
+  // Disable button and show loading state
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = '⏳ Deleting...';
+  deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+  resultDiv.classList.add('hidden');
+  
+  try {
+    const response = await fetch(`/admin/delete_bookings_by_date?date=${deleteDate}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      showDeleteResult(data.message || `Successfully deleted bookings for ${deleteDate}`, 'success');
+      // Clear the date input
+      document.getElementById('deleteDate').value = '';
+      
+      // Trigger refresh for dashboard if open in another tab
+      if (typeof(Storage) !== "undefined") {
+        localStorage.setItem('bookings_deleted', JSON.stringify({date: deleteDate, timestamp: Date.now()}));
+        // Remove after a short delay to allow other tabs to catch it
+        setTimeout(() => localStorage.removeItem('bookings_deleted'), 100);
+      }
+    } else {
+      showDeleteResult(data.error || data.message || 'Failed to delete bookings', 'error');
+    }
+  } catch (error) {
+    showDeleteResult('Error: ' + error.message, 'error');
+  } finally {
+    // Re-enable button
+    deleteBtn.disabled = false;
+    deleteBtn.textContent = '🗑️ Delete Bookings';
+    deleteBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
+}
+
+function showDeleteResult(message, type) {
+  const resultDiv = document.getElementById('delete-result');
+  resultDiv.className = `mt-4 p-3 rounded ${
+    type === 'success' 
+      ? 'bg-green-100 text-green-800 border border-green-300' 
+      : 'bg-red-100 text-red-800 border border-red-300'
+  }`;
+  resultDiv.textContent = message;
+  resultDiv.classList.remove('hidden');
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    resultDiv.classList.add('hidden');
+  }, 5000);
+}
+</script>
+{% endblock %}

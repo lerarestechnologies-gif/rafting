@@ -1,0 +1,849 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<div>
+  <h1 class="text-2xl font-bold mb-4">
+    {% if current_user.is_subadmin() %}
+      Sub-Admin Dashboard
+    {% else %}
+      Admin Dashboard
+    {% endif %}
+  </h1>
+
+  <div class="bg-white shadow rounded-lg p-4">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+      <div class="flex items-center gap-3 mb-3 md:mb-0">
+        <h2 class="text-lg font-semibold">
+          {% if current_user.is_subadmin() %}
+            Today & Tomorrow Bookings Overview (Confirmed Only)
+          {% else %}
+            All Bookings
+          {% endif %}
+        </h2>
+        {% if not current_user.is_subadmin() %}
+        <button onclick="exportAllBookingsToPDF()" 
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+          <span>📄</span>
+          <span>Export to PDF</span>
+        </button>
+        {% endif %}
+      </div>
+      {% if not current_user.is_subadmin() %}
+      <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <!-- Filter Type (Daily/Weekly/Monthly) -->
+        <div class="flex items-center gap-2">
+          <label for="filterType" class="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
+          <select id="filterType" 
+                  class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All</option>
+            <option value="daily" {% if filter_type == 'daily' %}selected{% endif %}>Daily</option>
+            <option value="weekly" {% if filter_type == 'weekly' %}selected{% endif %}>Weekly</option>
+            <option value="monthly" {% if filter_type == 'monthly' %}selected{% endif %}>Monthly</option>
+          </select>
+        </div>
+        <!-- Date Filter (for Daily) -->
+        <div class="flex items-center gap-2">
+          <label for="filterDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Date:</label>
+          <input type="date" 
+                 id="filterDate" 
+                 name="filterDate"
+                 value="{{ selected_date }}"
+                 class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <button onclick="applyDateFilter()" 
+                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
+            Apply
+          </button>
+          {% if selected_date or filter_type %}
+          <button onclick="clearDateFilter()" 
+                  class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
+            Clear
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    
+    <!-- Booking Count -->
+    <div class="mb-3 text-sm text-gray-600">
+      <span id="bookingCount">{{ bookings|length }}</span> booking{{ 's' if bookings|length != 1 else '' }} found
+      {% if current_user.is_subadmin() %}
+        <span class="text-blue-600">(Today & Tomorrow only)</span>
+      {% elif selected_date %}
+        <span class="text-blue-600">(filtered)</span>
+      {% endif %}
+    </div>
+    
+    <div class="overflow-x-auto">
+    <table class="min-w-full border border-gray-300 rounded">
+      <thead>
+        <tr class="bg-gray-100">
+          <th class="px-4 py-2 border">Name</th>
+          <th class="px-4 py-2 border">Phone Number</th>
+          <th class="px-4 py-2 border">Email</th>
+          <th class="px-4 py-2 border">Date</th>
+          <th class="px-4 py-2 border">Slot</th>
+          <th class="px-4 py-2 border">Group Size</th>
+          <th class="px-4 py-2 border">Rafts</th>
+          <th class="px-4 py-2 border">Status</th>
+          {% if not current_user.is_subadmin() %}
+          <th class="px-4 py-2 border">Actions</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr class="text-center border-t">
+          <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
+          <td class="border px-4 py-2">{{ b.phone | format_phone }}</td>
+          <td class="border px-4 py-2">{{ b.email or "-" }}</td>
+          <td class="border px-4 py-2">{{ b.date }}</td>
+          <td class="border px-4 py-2">{{ b.slot }}</td>
+          <td class="border px-4 py-2">{{ b.group_size }}</td>
+          <td class="border px-4 py-2">
+            {% if b.raft_allocations %}
+              🛶 {{ b.raft_allocations | join(', ') }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="border px-4 py-2">
+            {% if b.status == 'Cancelled' %}
+              <span class="text-red-500 font-semibold">Cancelled</span>
+            {% elif 'Pending' in b.status %}
+              <span class="text-yellow-600 font-semibold">{{ b.status }}</span>
+            {% else %}
+              <span class="text-green-600 font-semibold">{{ b.status }}</span>
+            {% endif %}
+          </td>
+          {% if not current_user.is_subadmin() %}
+          <td class="border px-4 py-2">
+            <button onclick="cancelBooking('{{ b._id }}')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
+            <button onclick="promptPostpone('{{ b._id }}')" class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    
+    {% if not bookings %}
+      <div class="text-center py-8 text-gray-500">
+        <p class="text-lg">No bookings found</p>
+        <p class="text-sm mt-2">
+          {% if current_user.is_subadmin() %}
+            No confirmed bookings for today or tomorrow.
+          {% elif selected_date %}
+            Try adjusting your date filter or 
+            <button onclick="clearDateFilter()" class="text-blue-600 hover:underline">clear the filter</button> to see all bookings.
+          {% else %}
+            There are no bookings in the system yet.
+          {% endif %}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div id="occupancy" class="bg-white shadow rounded-lg p-4 mt-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">
+        {% if current_user.is_subadmin() %}
+          Occupancy Overview
+        {% else %}
+          Occupancy Overview
+        {% endif %}
+      </h2>
+      {% if not current_user.is_subadmin() %}
+      <button onclick="exportOccupancyOverviewToPDF()" 
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+        <span>📄</span>
+        <span>Export to PDF</span>
+      </button>
+      {% endif %}
+    </div>
+    {% if current_user.is_subadmin() %}
+    <!-- Sub-Admin: Single date picker only -->
+    <div class="flex items-center gap-3 mb-3">
+      <label for="occupancyDate" class="font-medium">Select date:</label>
+      <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
+      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+      <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
+    </div>
+    {% else %}
+    <!-- Admin: Filter type and date picker -->
+    <div class="flex items-center gap-3 mb-3">
+      <label for="occupancyFilterType" class="font-medium">Filter:</label>
+      <select id="occupancyFilterType" 
+              class="border px-2 py-1 rounded">
+        <option value="">All</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-3 mb-3">
+      <label for="occupancyDate" class="font-medium">Select date:</label>
+      <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
+      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+      <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
+    </div>
+    {% endif %}
+    {% if not current_user.is_subadmin() %}
+    <script>
+    // Handle occupancy filter type change (Admin only)
+    document.addEventListener('DOMContentLoaded', function() {
+      const occupancyFilterType = document.getElementById('occupancyFilterType');
+      if (occupancyFilterType) {
+        occupancyFilterType.addEventListener('change', function() {
+          const filterType = this.value;
+          const dateInp = document.getElementById('occupancyDate');
+          const today = new Date();
+          
+          if (filterType === 'daily') {
+            dateInp.value = today.toISOString().slice(0, 10);
+            renderOccupancy(dateInp.value);
+          } else if (filterType === 'weekly') {
+            // Get start of week (Monday)
+            const daysSinceMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+            const weekStart = new Date(today);
+            weekStart.setDate(today.getDate() - daysSinceMonday);
+            dateInp.value = weekStart.toISOString().slice(0, 10);
+            renderOccupancy(dateInp.value);
+          } else if (filterType === 'monthly') {
+            // Get start of month
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            dateInp.value = monthStart.toISOString().slice(0, 10);
+            renderOccupancy(dateInp.value);
+          } else {
+            // All - show today
+            dateInp.value = today.toISOString().slice(0, 10);
+            renderOccupancy(dateInp.value);
+          }
+        });
+      }
+    });
+    </script>
+    {% endif %}
+    <div id="occupancyDetail" class="grid gap-4"></div>
+    <div class="mt-3 text-sm text-gray-600">
+      <span class="inline-block w-4 h-4 bg-green-500 rounded mr-1 align-middle"></span> Available
+      <span class="inline-block w-4 h-4 bg-yellow-400 rounded ml-3 mr-1 align-middle"></span> Partial
+      <span class="inline-block w-4 h-4 bg-red-500 rounded ml-3 mr-1 align-middle"></span> Full
+    </div>
+  </div>
+
+<script>
+const defaultCapacity = {{ settings.capacity if settings and settings.capacity is defined else 6 }};
+const timeSlots = {{ (settings.time_slots if settings and settings.time_slots else ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30']) | tojson }};
+async function fetchOccupancy(day) {
+  let url = '/admin/occupancy_detail';
+  // Both Admin and Sub-Admin: Use day parameter
+  if (day) url += '?day=' + day;
+  const res = await fetch(url);
+  if (!res.ok) {
+    console.error('Occupancy fetch failed', res.status);
+    return {};
+  }
+  return await res.json();
+}
+
+function raftColor(occupancy, cap) {
+  // Ensure occupancy is non-negative
+  const safeOccupancy = Math.max(0, occupancy || 0);
+  if (safeOccupancy >= cap) return 'bg-red-500';
+  if (safeOccupancy > 0 && safeOccupancy < cap) return 'bg-yellow-400';
+  return 'bg-green-500';
+}
+
+function makeRaftSquare(raft) {
+  const span = document.createElement('span');
+  // Ensure occupancy is non-negative
+  const safeOccupancy = Math.max(0, raft.occupancy || 0);
+  const raftCapacity = raft.capacity || 6;
+  span.className = 'inline-block w-8 h-8 rounded mr-2 align-middle ' + raftColor(safeOccupancy, raftCapacity);
+  span.title = `Raft ${raft.raft_id} - ${safeOccupancy}/${raftCapacity} people`;
+  span.style.display = 'inline-block';
+  span.style.verticalAlign = 'middle';
+  span.style.cursor = 'default';
+  return span;
+}
+
+async function renderOccupancy(day) {
+  const data = await fetchOccupancy(day);
+  const container = document.getElementById('occupancyDetail');
+  container.innerHTML = '';
+  
+  // Clear any existing data first
+  if (!data || Object.keys(data).length === 0) {
+    container.innerHTML = '<p class="text-gray-500 text-center py-4">No occupancy data available for this date.</p>';
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+    if (lastUpdatedEl) {
+      lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+    }
+    return;
+  }
+  
+  // Both Admin and Sub-Admin: Data is grouped by slot (single date)
+  for (const [slot, rafts] of Object.entries(data)) {
+    if (!Array.isArray(rafts) || rafts.length === 0) {
+      continue;
+    }
+    
+    const slotCard = document.createElement('div');
+    slotCard.className = 'p-3 border rounded';
+    const header = document.createElement('div');
+    header.innerHTML = `<strong>${slot}</strong>`;
+    slotCard.appendChild(header);
+    const raftRow = document.createElement('div');
+    raftRow.className = 'mt-2';
+    
+    // Process and validate raft data
+    const validRafts = rafts.map(r => {
+      // Clamp occupancy to >= 0 to prevent negative values
+      const occupancy = Math.max(0, r.occupancy || 0);
+      const raftCapacity = r.capacity || 6;
+      // Only show special if occupancy > 0
+      const isSpecial = (r.is_special && occupancy > 0);
+      
+      return {
+        ...r,
+        occupancy: occupancy,
+        capacity: raftCapacity,
+        is_special: isSpecial
+      };
+    });
+    
+    for (const r of validRafts) {
+      const sq = makeRaftSquare(r);
+      raftRow.appendChild(sq);
+    }
+    slotCard.appendChild(raftRow);
+    
+    // detailed list below for click/hover clarity
+    const details = document.createElement('div');
+    details.className = 'mt-2 text-sm text-gray-700';
+    details.innerHTML = validRafts.map(r => {
+      // Ensure occupancy is non-negative
+      const occupancy = Math.max(0, r.occupancy || 0);
+      // Only show special tag if occupancy > 0 and is_special is true
+      const specialTag = (r.is_special && occupancy > 0) ? ' (7-special)' : '';
+      return `Raft ${r.raft_id}: ${occupancy}/${r.capacity}${specialTag}`;
+    }).join('<br/>');
+    slotCard.appendChild(details);
+
+    container.appendChild(slotCard);
+  }
+  
+  const lastUpdatedEl = document.getElementById('lastUpdated');
+  if (lastUpdatedEl) {
+    lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const dateInp = document.getElementById('occupancyDate');
+  if (dateInp) {
+    // Default to today for both Admin and Sub-Admin
+    const today = new Date().toISOString().slice(0,10);
+    dateInp.value = today;
+    renderOccupancy(today);
+    
+    // Refresh every 10 seconds
+    setInterval(() => {
+      const currentDate = dateInp.value || today;
+      renderOccupancy(currentDate);
+    }, 10000);
+    
+    // Handle date change
+    dateInp.addEventListener('change', function() {
+      if (this.value) {
+        renderOccupancy(this.value);
+      }
+    });
+    
+    // Handle refresh button
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        // Clear container before refreshing
+        const container = document.getElementById('occupancyDetail');
+        if (container) {
+          container.innerHTML = '';
+        }
+        renderOccupancy(dateInp.value || today);
+      });
+    }
+  }
+  
+  {% if not current_user.is_subadmin() %}
+  // Admin only: Date filter functionality for bookings
+  setupDateFilter();
+  {% endif %}
+});
+
+// Date Filter Functions
+function setupDateFilter() {
+  // Optional: Auto-apply filter when date is selected (uncomment if desired)
+  // const filterDate = document.getElementById('filterDate');
+  // if (filterDate) {
+  //   filterDate.addEventListener('change', function() {
+  //     if (filterDate.value) {
+  //       applyDateFilter();
+  //     }
+  //   });
+  // }
+}
+
+function applyDateFilter() {
+  const filterDate = document.getElementById('filterDate').value;
+  const filterType = document.getElementById('filterType').value;
+  
+  // Build query parameters
+  const params = new URLSearchParams();
+  
+  if (filterType) {
+    params.append('filter_type', filterType);
+  }
+  
+  if (filterDate) {
+    params.append('date', filterDate);
+  }
+  
+  // Navigate to filtered view
+  const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
+  window.location.href = url;
+}
+
+function clearDateFilter() {
+  // Clear date input and filter type
+  document.getElementById('filterDate').value = '';
+  document.getElementById('filterType').value = '';
+  
+  // Navigate to dashboard without filters
+  window.location.href = '/admin/dashboard';
+}
+</script>
+
+  </div>
+
+<script>
+async function cancelBooking(id) {
+  {% if current_user.is_subadmin() %}
+  alert('Access denied. Sub-Admin cannot cancel bookings.');
+  return;
+  {% endif %}
+  if (!confirm("Are you sure you want to cancel this booking?")) return;
+  try {
+    const res = await fetch(`/admin/cancel_booking/${id}`, { method: "POST" });
+    const data = await res.json();
+    alert(data.message || data.error || "Cancelled");
+    
+    // Refresh occupancy overview if it's displayed
+    const occupancyDate = document.getElementById('occupancyDate');
+    if (occupancyDate) {
+      renderOccupancy(occupancyDate.value);
+    }
+    
+    location.reload();
+  } catch (err) {
+    alert("Cancel failed: " + err.message);
+  }
+}
+
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
+    type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+  }`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.3s';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+function showPostponeModal(id, currentDate, currentSlot) {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+      <h3 class="text-xl font-bold mb-4">Postpone Booking</h3>
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">New Date:</label>
+        <input type="date" id="postponeDate" class="w-full border px-3 py-2 rounded" min="${new Date().toISOString().split('T')[0]}" required />
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">New Time Slot:</label>
+        <select id="postponeSlot" class="w-full border px-3 py-2 rounded" required>
+          <option value="">Select a slot</option>
+          ${(timeSlots || []).map(slot => 
+            `<option value="${slot}" ${slot === currentSlot ? 'selected' : ''}>${slot}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="flex gap-3 justify-end">
+        <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Cancel</button>
+        <button onclick="submitPostpone('${id}')" class="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">Postpone</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const dateInput = modal.querySelector('#postponeDate');
+  if (currentDate) {
+    dateInput.value = currentDate;
+  }
+  // Close on outside click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+async function submitPostpone(id) {
+  const modal = document.querySelector('.fixed.bg-black');
+  const newDate = document.getElementById('postponeDate').value;
+  const newSlot = document.getElementById('postponeSlot').value;
+  
+  if (!newDate || !newSlot) {
+    showToast('Please fill in both date and slot', 'error');
+    return;
+  }
+  
+  // Validate date is in the future
+  const selectedDate = new Date(newDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (selectedDate < today) {
+    showToast('Please select a future date', 'error');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`/admin/postpone_booking/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_date: newDate, new_slot: newSlot })
+    });
+    const data = await res.json();
+    
+    if (!res.ok || data.error) {
+      showToast(data.error || 'Failed to postpone booking', 'error');
+      return;
+    }
+    
+    modal.remove();
+    showToast(data.message || 'Booking postponed successfully', 'success');
+    
+    // Refresh occupancy overview for both old and new dates
+    const dateInp = document.getElementById('occupancyDate');
+    const currentViewDate = dateInp.value;
+    renderOccupancy(currentViewDate);
+    
+    // Also refresh if viewing a different date
+    if (currentViewDate !== newDate) {
+      setTimeout(() => {
+        dateInp.value = newDate;
+        renderOccupancy(newDate);
+      }, 500);
+    }
+    
+    // Reload the page after a short delay to show updated booking list
+    setTimeout(() => {
+      location.reload();
+    }, 1500);
+  } catch (err) {
+    showToast("Postpone failed: " + err.message, 'error');
+  }
+}
+
+async function promptPostpone(id) {
+  {% if current_user.is_subadmin() %}
+  alert('Access denied. Sub-Admin cannot postpone bookings.');
+  return;
+  {% endif %}
+  // Get current booking details from the table row
+  // Note: Column order is: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
+  const row = event.target.closest('tr');
+  const currentDate = row.querySelector('td:nth-child(4)').textContent.trim();
+  const currentSlot = row.querySelector('td:nth-child(5)').textContent.trim();
+  showPostponeModal(id, currentDate, currentSlot);
+}
+
+// Listen for settings updates from other tabs/windows
+window.addEventListener('storage', function(e) {
+  if (e.key === 'settings_updated') {
+    // Reload page to get fresh settings (capacity, time slots, etc.)
+    console.log('Settings updated - refreshing dashboard...');
+    window.location.reload();
+  }
+  if (e.key === 'bookings_deleted') {
+    // Refresh occupancy overview when bookings are deleted
+    try {
+      const deletedInfo = JSON.parse(e.newValue || '{}');
+      const deletedDate = deletedInfo.date;
+      const occupancyDate = document.getElementById('occupancyDate');
+      
+      if (occupancyDate) {
+        // Clear and re-fetch occupancy data
+        const container = document.getElementById('occupancyDetail');
+        if (container) {
+          container.innerHTML = '';
+        }
+        // If the deleted date matches the currently viewed date, refresh
+        if (deletedDate && occupancyDate.value === deletedDate) {
+          renderOccupancy(deletedDate);
+        } else if (!deletedDate) {
+          // If no specific date, refresh current view
+          renderOccupancy(occupancyDate.value);
+        }
+      }
+    } catch (err) {
+      // Fallback: just refresh current view
+      const occupancyDate = document.getElementById('occupancyDate');
+      if (occupancyDate) {
+        const container = document.getElementById('occupancyDetail');
+        if (container) {
+          container.innerHTML = '';
+        }
+        renderOccupancy(occupancyDate.value);
+      }
+    }
+  }
+});
+
+// PDF Export Functions
+function exportAllBookingsToPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  
+  // Title
+  doc.setFontSize(18);
+  doc.text('All Bookings Report', 14, 15);
+  
+  // Date and time
+  doc.setFontSize(10);
+  const now = new Date();
+  doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
+  
+  // Filter info if applicable
+  const filterDate = document.getElementById('filterDate')?.value;
+  if (filterDate) {
+    doc.text(`Filtered by Date: ${filterDate}`, 14, 27);
+  }
+  
+  // Table columns
+  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Rafts', 'Status'];
+  
+  // Get booking data from table
+  const tableBody = document.querySelector('table tbody');
+  const tableRows = [];
+  
+  if (tableBody) {
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 8) {
+        const rowData = [
+          cells[0].textContent.trim() || 'Unknown',
+          cells[1].textContent.trim() || '-',
+          cells[2].textContent.trim() || '-',
+          cells[3].textContent.trim() || '-',
+          cells[4].textContent.trim() || '-',
+          cells[5].textContent.trim() || '-',
+          cells[6].textContent.trim() || '-',
+          cells[7].textContent.trim() || '-'
+        ];
+        tableRows.push(rowData);
+      }
+    });
+  }
+  
+  if (tableRows.length === 0) {
+    doc.text('No bookings found', 14, 35);
+  } else {
+    // Add table
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: filterDate ? 32 : 27,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [66, 139, 202] },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      margin: { top: filterDate ? 32 : 27 }
+    });
+  }
+  
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.text(
+      `Page ${i} of ${pageCount} - Raft Booking System`,
+      doc.internal.pageSize.getWidth() / 2,
+      doc.internal.pageSize.getHeight() - 10,
+      { align: 'center' }
+    );
+  }
+  
+  // Save PDF
+  const filename = filterDate 
+    ? `All_Bookings_${filterDate}_${now.toISOString().slice(0,10)}.pdf`
+    : `All_Bookings_${now.toISOString().slice(0,10)}.pdf`;
+  doc.save(filename);
+}
+
+async function exportOccupancyOverviewToPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  
+  // Get current date from occupancy date picker
+  const occupancyDate = document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0, 10);
+  
+  // Fetch occupancy data
+  const occupancyData = await fetchOccupancy(occupancyDate);
+  
+  // Title
+  doc.setFontSize(18);
+  doc.text('Occupancy Overview Report', 14, 15);
+  
+  // Date and time
+  doc.setFontSize(10);
+  const now = new Date();
+  doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
+  doc.text(`Report Date: ${occupancyDate}`, 14, 27);
+  
+  // Process occupancy data
+  const tableRows = [];
+  let totalRafts = 0;
+  let totalOccupancy = 0;
+  let totalCapacity = 0;
+  
+  if (occupancyData && Object.keys(occupancyData).length > 0) {
+    for (const [slot, rafts] of Object.entries(occupancyData)) {
+      if (Array.isArray(rafts) && rafts.length > 0) {
+        const slotRafts = rafts.length;
+        const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
+        const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
+        const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
+        
+        tableRows.push([
+          slot,
+          slotRafts.toString(),
+          slotOccupancy.toString(),
+          (slotCapacity - slotOccupancy).toString(),
+          `${occupancyPercent}%`
+        ]);
+        
+        totalRafts += slotRafts;
+        totalOccupancy += slotOccupancy;
+        totalCapacity += slotCapacity;
+      }
+    }
+    
+    // Add summary row
+    const totalOccupancyPercent = totalCapacity > 0 ? ((totalOccupancy / totalCapacity) * 100).toFixed(1) : 0;
+    tableRows.push([
+      'TOTAL',
+      totalRafts.toString(),
+      totalOccupancy.toString(),
+      (totalCapacity - totalOccupancy).toString(),
+      `${totalOccupancyPercent}%`
+    ]);
+  }
+  
+  if (tableRows.length === 0) {
+    doc.text('No occupancy data available for this date', 14, 35);
+  } else {
+    // Table columns
+    const tableColumn = ['Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
+    
+    // Add table
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 32,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [66, 139, 202] },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      margin: { top: 32 },
+      didDrawPage: function(data) {
+        // Highlight total row
+        if (data.pageNumber === data.pageCount) {
+          const lastRow = data.table.body[data.table.body.length - 1];
+          if (lastRow && lastRow[0] && lastRow[0].text === 'TOTAL') {
+            doc.setFillColor(220, 220, 220);
+            doc.rect(data.table.startX, lastRow.y, data.table.width, lastRow.height, 'F');
+          }
+        }
+      }
+    });
+    
+    // Add detailed raft information
+    let yPos = doc.lastAutoTable.finalY + 10;
+    if (yPos > doc.internal.pageSize.getHeight() - 30) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(12);
+    doc.text('Detailed Raft Information', 14, yPos);
+    yPos += 8;
+    
+    doc.setFontSize(9);
+    for (const [slot, rafts] of Object.entries(occupancyData)) {
+      if (Array.isArray(rafts) && rafts.length > 0) {
+        if (yPos > doc.internal.pageSize.getHeight() - 40) {
+          doc.addPage();
+          yPos = 20;
+        }
+        
+        doc.setFontSize(10);
+        doc.text(`${slot}:`, 14, yPos);
+        yPos += 6;
+        doc.setFontSize(8);
+        
+        rafts.forEach(raft => {
+          if (yPos > doc.internal.pageSize.getHeight() - 20) {
+            doc.addPage();
+            yPos = 20;
+          }
+          const status = raft.occupancy >= raft.capacity ? 'Full' : 
+                        raft.occupancy > 0 ? 'Partial' : 'Available';
+          const special = raft.is_special ? ' (7-special)' : '';
+          doc.text(
+            `  Raft ${raft.raft_id}: ${raft.occupancy}/${raft.capacity} ${status}${special}`,
+            16,
+            yPos
+          );
+          yPos += 5;
+        });
+        yPos += 3;
+      }
+    }
+  }
+  
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.text(
+      `Page ${i} of ${pageCount} - Raft Booking System`,
+      doc.internal.pageSize.getWidth() / 2,
+      doc.internal.pageSize.getHeight() - 10,
+      { align: 'center' }
+    );
+  }
+  
+  // Save PDF
+  const filename = `Occupancy_Overview_${occupancyDate}_${now.toISOString().slice(0,10)}.pdf`;
+  doc.save(filename);
+}
+
+</script>
+{% endblock %}
+
+
+

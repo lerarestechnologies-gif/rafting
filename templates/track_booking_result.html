@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
+  <h2 class="text-lg font-bold mb-4">Booking Details</h2>
+  
+  <div class="space-y-3 mb-6">
+    <p><strong>Name:</strong> {{ booking.user_name }}</p>
+    <p><strong>Email:</strong> {{ booking.email }}</p>
+    <p><strong>Phone:</strong> {{ booking.phone | format_phone }}</p>
+    <p><strong>Date:</strong> {{ booking.date }}</p>
+    <p><strong>Time Slot:</strong> {{ booking.slot }}</p>
+    <p><strong>Group Size:</strong> {{ booking.group_size }} person(s)</p>
+    <p><strong>Status:</strong> 
+      <span class="px-2 py-1 rounded text-white text-sm {% if booking.status == 'Confirmed' %}bg-green-500{% elif booking.status == 'Pending' %}bg-yellow-500{% else %}bg-gray-500{% endif %}">
+        {{ booking.status }}
+      </span>
+    </p>
+    {% if booking.raft_allocations %}
+    <p><strong>Assigned Rafts:</strong> {{ booking.raft_allocations | join(', ') }}</p>
+    {% endif %}
+  </div>
+  
+  {% if booking.total_amount > 0 %}
+  <div class="border-t pt-4 mt-4">
+    <div class="bg-blue-50 p-4 rounded border border-blue-200">
+      <p class="text-sm text-gray-600">Amount per person:</p>
+      <p class="text-lg font-semibold text-blue-600 mb-2">${{ "%.2f"|format(booking.amount_per_person) }}</p>
+      
+      <p class="text-sm text-gray-600 mt-3">Total Amount:</p>
+      <p class="text-2xl font-bold text-green-600">${{ "%.2f"|format(booking.total_amount) }}</p>
+      <p class="text-xs text-gray-500 mt-1">{{ booking.group_size }} people × ${{ "%.2f"|format(booking.amount_per_person) }}</p>
+    </div>
+  </div>
+  {% else %}
+  <div class="border-t pt-4 mt-4">
+    <p class="text-gray-600 text-sm">No pricing information available yet.</p>
+  </div>
+  {% endif %}
+  
+  {% if booking.status == 'Pending' %}
+  <div class="bg-yellow-50 p-4 rounded border border-yellow-200 mt-6">
+    <p class="text-sm text-yellow-800">Your booking is pending. The admin will contact you at the phone number provided to confirm the booking.</p>
+  </div>
+  {% elif booking.status == 'Confirmed' %}
+  <div class="bg-green-50 p-4 rounded border border-green-200 mt-6">
+    <p class="text-sm text-green-800">Your booking is confirmed! See you on {{ booking.date }} at {{ booking.slot }}.</p>
+  </div>
+  {% endif %}
+  
+  <div class="mt-6"><a href="{{ url_for('booking.track_booking') }}" class="text-sm text-teal-600 hover:underline">Search Again</a> | <a href="{{ url_for('booking.home') }}" class="text-sm text-teal-600 hover:underline">Back to Home</a></div>
+</div>
+{% endblock %}

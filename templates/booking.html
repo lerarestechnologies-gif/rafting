@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
+  <h2 class="text-xl font-bold mb-4">Book Slot</h2>
+  <form method="POST">
+    <input name="name" placeholder="Full name" class="border p-2 w-full mb-2" required>
+    <input name="email" placeholder="Email" type="email" class="border p-2 w-full mb-2" required>
+    <input name="phone" placeholder="Phone" class="border p-2 w-full mb-2" required>
+  <input id="booking_date" name="booking_date" type="date" class="border p-2 w-full mb-2" min="{{ min_date }}" max="{{ max_date }}" required>
+  <small class="text-muted">Select a date between {{ min_date }} and {{ max_date }} (inclusive)</small>
+    <label class="block mb-1">Slot</label>
+    <select name="slot" id="slot-select" class="border p-2 w-full mb-2" required>
+      {% for s in settings.time_slots %}
+      <option value="{{ s }}">{{ s }}</option>
+      {% endfor %}
+    </select>
+    <input name="group_size" type="number" min="1" max="{{ (settings.rafts_per_slot if settings and settings.rafts_per_slot else 5) * ((settings.capacity if settings and settings.capacity else 6) + 1) }}" class="border p-2 w-full mb-2" placeholder="Group size" required>
+    <div class="text-center"><button class="bg-teal-600 text-white px-4 py-2 rounded">Confirm Booking</button></div>
+  </form>
+</div>
+
+<script>
+// Listen for settings updates from other tabs/windows
+window.addEventListener('storage', function(e) {
+  if (e.key === 'settings_updated') {
+    // Reload page to get fresh settings (time slots, max people, etc.)
+    window.location.reload();
+  }
+});
+</script>
+{% endblock %}
