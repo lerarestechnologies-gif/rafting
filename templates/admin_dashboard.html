@@ -235,6 +235,31 @@
 <script>
 const defaultCapacity = {{ settings.capacity if settings and settings.capacity is defined else 6 }};
 const timeSlots = {{ (settings.time_slots if settings and settings.time_slots else ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30']) | tojson }};
+
+// Parse the start time of a slot into minutes since midnight for sorting.
+function parseTimeSlotStart(slot) {
+  if (!slot || typeof slot !== 'string') return 0;
+  // handle various dash characters and common separators
+  const delimMatch = slot.match(/–|—|-|to/);
+  const delim = delimMatch ? delimMatch[0] : null;
+  const parts = delim ? slot.split(delim) : [slot];
+  const start = parts[0].trim();
+
+  // Match patterns like "7:00", "07:00", "7", "7 AM", "7:30 PM"
+  const m = start.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  if (!m) return 0;
+  let hh = parseInt(m[1], 10);
+  const mm = m[2] ? parseInt(m[2], 10) : 0;
+  const ampm = m[3];
+  if (ampm) {
+    if (/pm/i.test(ampm) && hh !== 12) hh += 12;
+    if (/am/i.test(ampm) && hh === 12) hh = 0;
+  }
+  return hh * 60 + mm;
+}
+
+// Sort configured time slots chronologically (by start time)
+timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
 async function fetchOccupancy(day) {
   let url = '/admin/occupancy_detail';
   // Both Admin and Sub-Admin: Use day parameter
@@ -284,7 +309,17 @@ async function renderOccupancy(day) {
   }
   
   // Both Admin and Sub-Admin: Data is grouped by slot (single date)
-  for (const [slot, rafts] of Object.entries(data)) {
+  // Use configured `timeSlots` order first, then append any unknown slots.
+  const slotOrder = [];
+  for (const s of timeSlots) {
+    if (Object.prototype.hasOwnProperty.call(data, s)) slotOrder.push(s);
+  }
+  const others = Object.keys(data).filter(s => !timeSlots.includes(s));
+  others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+  slotOrder.push(...others);
+
+  for (const slot of slotOrder) {
+    const rafts = data[slot];
     if (!Array.isArray(rafts) || rafts.length === 0) {
       continue;
     }
