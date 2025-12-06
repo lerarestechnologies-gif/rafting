@@ -494,115 +494,120 @@ def occupancy_by_date():
 def occupancy_detail():
     from datetime import date as _date
     
-    db = current_app.mongo.db
-    settings = load_settings(db)
-    slots = settings.get('time_slots', [])
-    rafts_per_slot = settings.get('rafts_per_slot', 5)
-    capacity = settings.get('capacity', 6)
-    
-    # Get day parameter
-    qday = request.args.get('day')
-    
-    # Sub-Admin: Only allow single date selection, default to today if not provided
-    if current_user.is_subadmin():
-        if not qday:
-            qday = _date.today().isoformat()
-        # Validate that the date is a valid date string (security check)
-        try:
-            _date.fromisoformat(qday)
-        except (ValueError, TypeError):
-            qday = _date.today().isoformat()
-        allowed_dates = [qday]
-    else:
-        # Admin: Use provided day parameter or default to today
-        if not qday:
-            qday = _date.today().isoformat()
-        allowed_dates = [qday]
-    
-    result = {}
-
-    bookings_by_slot = {}
-    bookings_count = 0
-    # Fetch bookings for allowed dates only
-    for b in db.bookings.find({'date': {'$in': allowed_dates}}):
-        s = b.get('slot')
-        date_key = b.get('date')
-        if date_key not in bookings_by_slot:
-            bookings_by_slot[date_key] = {}
-        bookings_by_slot[date_key].setdefault(s, []).append(b)
-        bookings_count += 1
-    
-    # Ensure rafts exist for all slots with current settings for all allowed dates
-    from models.raft_model import ensure_rafts_for_date_slot
-    for date_str in allowed_dates:
-        for slot in slots:
-            ensure_rafts_for_date_slot(db, date_str, slot, rafts_per_slot, capacity)
-    
-    # Process each allowed date
-    for date_str in allowed_dates:
-        # If no bookings exist for this date, ensure all rafts are reset to clean state
-        date_bookings = sum(len(slots_dict) for slots_dict in bookings_by_slot.get(date_str, {}).values())
-        if date_bookings == 0:
-            # Clean up any negative occupancy values and clear special flags
-            db.rafts.update_many(
-                {'day': date_str, '$or': [
-                    {'occupancy': {'$lt': 0}},
-                    {'occupancy': {'$gt': 0}},
-                    {'is_special': True}
-                ]},
-                {'$set': {'occupancy': 0, 'is_special': False}}
-            )
+    try:
+        db = current_app.mongo.db
+        settings = load_settings(db)
+        slots = settings.get('time_slots', [])
+        rafts_per_slot = settings.get('rafts_per_slot', 5)
+        capacity = settings.get('capacity', 6)
         
-        # Remove extra rafts beyond configured count (only if they have no occupancy)
-        for slot in slots:
-            existing_rafts = list(db.rafts.find({'day': date_str, 'slot': slot}).sort('raft_id', 1))
-            if len(existing_rafts) > rafts_per_slot:
-                # Remove rafts beyond the configured limit (only if they have no occupancy)
-                for raft in existing_rafts[rafts_per_slot:]:
-                    if raft.get('occupancy', 0) == 0:
-                        db.rafts.delete_one({'_id': raft['_id']})
+        # Get day parameter
+        qday = request.args.get('day')
+        
+        # Sub-Admin: Only allow single date selection, default to today if not provided
+        if current_user.is_subadmin():
+            if not qday:
+                qday = _date.today().isoformat()
+            # Validate that the date is a valid date string (security check)
+            try:
+                _date.fromisoformat(qday)
+            except (ValueError, TypeError):
+                qday = _date.today().isoformat()
+            allowed_dates = [qday]
+        else:
+            # Admin: Use provided day parameter or default to today
+            if not qday:
+                qday = _date.today().isoformat()
+            allowed_dates = [qday]
+        
+        result = {}
 
-        # Build result for this date
-        for slot in slots:
-            # Fetch only the configured number of rafts (limit to rafts_per_slot)
-            rafts = list(db.rafts.find({'day': date_str, 'slot': slot}).sort('raft_id', 1).limit(rafts_per_slot))
-            raft_list = []
-            for r in rafts:
-                raft_bookings = []
-                slot_bookings = bookings_by_slot.get(date_str, {}).get(slot, [])
-                for b in slot_bookings:
-                    if b.get('raft_allocations') and r.get('raft_id') in b.get('raft_allocations', []):
-                        raft_bookings.append({
-                            'id': str(b['_id']),
-                            'name': b.get('user_name') or b.get('name') or '',
-                            'email': b.get('email',''),
-                            'group_size': b.get('group_size'),
-                            'status': b.get('status')
-                        })
-                # Only show is_special if occupancy > 0 (special rafts should have occupancy)
-                # Clamp occupancy to >= 0 to prevent negative values
-                occupancy = max(0, r.get('occupancy', 0))
-                is_special = r.get('is_special', False) and occupancy > 0
-                
-                # If occupancy is 0 but is_special is True in DB, fix it (data consistency)
-                if occupancy == 0 and r.get('is_special', False):
-                    db.rafts.update_one(
-                        {'_id': r['_id']},
-                        {'$set': {'is_special': False}}
-                    )
-                    is_special = False
-                
-                raft_list.append({
-                    'raft_id': r.get('raft_id'),
-                    'occupancy': occupancy,
-                    'capacity': capacity,
-                    'is_special': is_special,
-                    'bookings': raft_bookings
-                })
+        bookings_by_slot = {}
+        bookings_count = 0
+        # Fetch bookings for allowed dates only
+        for b in db.bookings.find({'date': {'$in': allowed_dates}}):
+            s = b.get('slot')
+            date_key = b.get('date')
+            if date_key not in bookings_by_slot:
+                bookings_by_slot[date_key] = {}
+            bookings_by_slot[date_key].setdefault(s, []).append(b)
+            bookings_count += 1
+        
+        # Ensure rafts exist for all slots with current settings for all allowed dates
+        from models.raft_model import ensure_rafts_for_date_slot
+        for date_str in allowed_dates:
+            for slot in slots:
+                ensure_rafts_for_date_slot(db, date_str, slot, rafts_per_slot, capacity)
+        
+        # Process each allowed date
+        for date_str in allowed_dates:
+            # If no bookings exist for this date, ensure all rafts are reset to clean state
+            date_bookings = sum(len(slots_dict) for slots_dict in bookings_by_slot.get(date_str, {}).values())
+            if date_bookings == 0:
+                # Clean up any negative occupancy values and clear special flags
+                db.rafts.update_many(
+                    {'day': date_str, '$or': [
+                        {'occupancy': {'$lt': 0}},
+                        {'occupancy': {'$gt': 0}},
+                        {'is_special': True}
+                    ]},
+                    {'$set': {'occupancy': 0, 'is_special': False}}
+                )
             
-            # Both admin and subadmin: group by slot only (single date)
-            result[slot] = raft_list[:rafts_per_slot]
-    return jsonify(result)
+            # Remove extra rafts beyond configured count (only if they have no occupancy)
+            for slot in slots:
+                existing_rafts = list(db.rafts.find({'day': date_str, 'slot': slot}).sort('raft_id', 1))
+                if len(existing_rafts) > rafts_per_slot:
+                    # Remove rafts beyond the configured limit (only if they have no occupancy)
+                    for raft in existing_rafts[rafts_per_slot:]:
+                        if raft.get('occupancy', 0) == 0:
+                            db.rafts.delete_one({'_id': raft['_id']})
+
+            # Build result for this date
+            for slot in slots:
+                # Fetch only the configured number of rafts (limit to rafts_per_slot)
+                rafts = list(db.rafts.find({'day': date_str, 'slot': slot}).sort('raft_id', 1).limit(rafts_per_slot))
+                raft_list = []
+                for r in rafts:
+                    raft_bookings = []
+                    slot_bookings = bookings_by_slot.get(date_str, {}).get(slot, [])
+                    for b in slot_bookings:
+                        if b.get('raft_allocations') and r.get('raft_id') in b.get('raft_allocations', []):
+                            raft_bookings.append({
+                                'id': str(b['_id']),
+                                'name': b.get('user_name') or b.get('name') or '',
+                                'email': b.get('email',''),
+                                'group_size': b.get('group_size'),
+                                'status': b.get('status')
+                            })
+                    # Only show is_special if occupancy > 0 (special rafts should have occupancy)
+                    # Clamp occupancy to >= 0 to prevent negative values
+                    occupancy = max(0, r.get('occupancy', 0))
+                    is_special = r.get('is_special', False) and occupancy > 0
+                    
+                    # If occupancy is 0 but is_special is True in DB, fix it (data consistency)
+                    if occupancy == 0 and r.get('is_special', False):
+                        db.rafts.update_one(
+                            {'_id': r['_id']},
+                            {'$set': {'is_special': False}}
+                        )
+                        is_special = False
+                    
+                    raft_list.append({
+                        'raft_id': r.get('raft_id'),
+                        'occupancy': occupancy,
+                        'capacity': capacity,
+                        'is_special': is_special,
+                        'bookings': raft_bookings
+                    })
+                
+                # Both admin and subadmin: group by slot only (single date)
+                result[slot] = raft_list[:rafts_per_slot]
+        return jsonify(result)
+    except Exception as e:
+        print(f'[ERROR] occupancy_detail: {str(e)}')
+        # Return empty data instead of error to allow graceful fallback on frontend
+        return jsonify({}), 200
 
 @admin_bp.route('/cancel_booking/<booking_id>', methods=['POST'])
 @login_required

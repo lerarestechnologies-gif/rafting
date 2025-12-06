@@ -14,9 +14,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Connect to MongoDB
+    # Connect to MongoDB with optimized timeout settings for slow connections
     mongo_uri = app.config.get('MONGO_URI')
-    client = MongoClient(mongo_uri)
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=10000, socketTimeoutMS=10000, connectTimeoutMS=10000)
     # Try to get default database from URI, otherwise use raft_booking
     try:
         db = client.get_default_database()

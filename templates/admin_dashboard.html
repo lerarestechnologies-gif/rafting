@@ -258,8 +258,6 @@ function parseTimeSlotStart(slot) {
   return hh * 60 + mm;
 }
 
-// Sort configured time slots chronologically (by start time)
-timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
 async function fetchOccupancy(day) {
   let url = '/admin/occupancy_detail';
   // Both Admin and Sub-Admin: Use day parameter
@@ -376,6 +374,11 @@ async function renderOccupancy(day) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Sort configured time slots chronologically (by start time)
+  if (Array.isArray(timeSlots) && timeSlots.length > 0) {
+    timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+  }
+  
   const dateInp = document.getElementById('occupancyDate');
   if (dateInp) {
     // Default to today for both Admin and Sub-Admin
