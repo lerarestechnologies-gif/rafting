@@ -670,8 +670,8 @@ function exportAllBookingsToPDF() {
     doc.text(`Filtered by Date: ${filterDate}`, 14, 27);
   }
   
-  // Table columns
-  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Rafts', 'Status'];
+  // Table columns (RAFT columns removed)
+  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Status'];
   
   // Get booking data from table
   const tableBody = document.querySelector('table tbody');
@@ -681,6 +681,8 @@ function exportAllBookingsToPDF() {
     const rows = tableBody.querySelectorAll('tr');
     rows.forEach(row => {
       const cells = row.querySelectorAll('td');
+      // Expect the table in the DOM to still contain the Rafts column, so
+      // skip that column when building the PDF data rows.
       if (cells.length >= 8) {
         const rowData = [
           cells[0].textContent.trim() || 'Unknown',
@@ -689,7 +691,7 @@ function exportAllBookingsToPDF() {
           cells[3].textContent.trim() || '-',
           cells[4].textContent.trim() || '-',
           cells[5].textContent.trim() || '-',
-          cells[6].textContent.trim() || '-',
+          // Skip cells[6] (Rafts) intentionally
           cells[7].textContent.trim() || '-'
         ];
         tableRows.push(rowData);
@@ -718,7 +720,7 @@ function exportAllBookingsToPDF() {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.text(
-      `Page ${i} of ${pageCount} - Raft Booking System`,
+      `Page ${i} of ${pageCount} - Booking System`,
       doc.internal.pageSize.getWidth() / 2,
       doc.internal.pageSize.getHeight() - 10,
       { align: 'center' }
@@ -754,37 +756,33 @@ async function exportOccupancyOverviewToPDF() {
   
   // Process occupancy data
   const tableRows = [];
-  let totalRafts = 0;
   let totalOccupancy = 0;
   let totalCapacity = 0;
   
   if (occupancyData && Object.keys(occupancyData).length > 0) {
     for (const [slot, rafts] of Object.entries(occupancyData)) {
       if (Array.isArray(rafts) && rafts.length > 0) {
-        const slotRafts = rafts.length;
         const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
         const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
+        const available = (slotCapacity - slotOccupancy).toString();
         const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
-        
+
         tableRows.push([
           slot,
-          slotRafts.toString(),
           slotOccupancy.toString(),
-          (slotCapacity - slotOccupancy).toString(),
+          available,
           `${occupancyPercent}%`
         ]);
-        
-        totalRafts += slotRafts;
+
         totalOccupancy += slotOccupancy;
         totalCapacity += slotCapacity;
       }
     }
-    
+
     // Add summary row
     const totalOccupancyPercent = totalCapacity > 0 ? ((totalOccupancy / totalCapacity) * 100).toFixed(1) : 0;
     tableRows.push([
       'TOTAL',
-      totalRafts.toString(),
       totalOccupancy.toString(),
       (totalCapacity - totalOccupancy).toString(),
       `${totalOccupancyPercent}%`
@@ -794,8 +792,8 @@ async function exportOccupancyOverviewToPDF() {
   if (tableRows.length === 0) {
     doc.text('No occupancy data available for this date', 14, 35);
   } else {
-    // Table columns
-    const tableColumn = ['Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
+    // Table columns (RAFT columns removed)
+    const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
     
     // Add table
     doc.autoTable({
@@ -818,48 +816,7 @@ async function exportOccupancyOverviewToPDF() {
       }
     });
     
-    // Add detailed raft information
-    let yPos = doc.lastAutoTable.finalY + 10;
-    if (yPos > doc.internal.pageSize.getHeight() - 30) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(12);
-    doc.text('Detailed Raft Information', 14, yPos);
-    yPos += 8;
-    
-    doc.setFontSize(9);
-    for (const [slot, rafts] of Object.entries(occupancyData)) {
-      if (Array.isArray(rafts) && rafts.length > 0) {
-        if (yPos > doc.internal.pageSize.getHeight() - 40) {
-          doc.addPage();
-          yPos = 20;
-        }
-        
-        doc.setFontSize(10);
-        doc.text(`${slot}:`, 14, yPos);
-        yPos += 6;
-        doc.setFontSize(8);
-        
-        rafts.forEach(raft => {
-          if (yPos > doc.internal.pageSize.getHeight() - 20) {
-            doc.addPage();
-            yPos = 20;
-          }
-          const status = raft.occupancy >= raft.capacity ? 'Full' : 
-                        raft.occupancy > 0 ? 'Partial' : 'Available';
-          const special = raft.is_special ? ' (7-special)' : '';
-          doc.text(
-            `  Raft ${raft.raft_id}: ${raft.occupancy}/${raft.capacity} ${status}${special}`,
-            16,
-            yPos
-          );
-          yPos += 5;
-        });
-        yPos += 3;
-      }
-    }
+    // Detailed raft information removed from PDF export to avoid RAFT fields
   }
   
   // Footer
@@ -868,7 +825,7 @@ async function exportOccupancyOverviewToPDF() {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.text(
-      `Page ${i} of ${pageCount} - Raft Booking System`,
+      `Page ${i} of ${pageCount} - Booking System`,
       doc.internal.pageSize.getWidth() / 2,
       doc.internal.pageSize.getHeight() - 10,
       { align: 'center' }
