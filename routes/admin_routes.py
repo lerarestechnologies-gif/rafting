@@ -56,6 +56,10 @@ def dashboard():
         filter_from = request.args.get('from_date', '')
         filter_to = request.args.get('to_date', '')
 
+        # Also accept multi-value status and slot filters
+        filter_status = request.args.getlist('status') or []
+        filter_slot = request.args.getlist('slot') or []
+
         # Validate and apply range filters
         if filter_from and filter_to:
             try:
@@ -82,6 +86,28 @@ def dashboard():
                 query_filter['date'] = filter_to
             except Exception:
                 pass
+        # Apply status filter if provided
+        try:
+            if filter_status:
+                # Normalize values (strings)
+                statuses = [s for s in filter_status if s]
+                if len(statuses) == 1:
+                    query_filter['status'] = statuses[0]
+                elif len(statuses) > 1:
+                    query_filter['status'] = {'$in': statuses}
+        except Exception:
+            pass
+
+        # Apply slot filter if provided
+        try:
+            if filter_slot:
+                slots = [s for s in filter_slot if s]
+                if len(slots) == 1:
+                    query_filter['slot'] = slots[0]
+                elif len(slots) > 1:
+                    query_filter['slot'] = {'$in': slots}
+        except Exception:
+            pass
     
     # Fetch bookings with filters
     bookings = list(db.bookings.find(query_filter).sort('created_at', -1).limit(500))
@@ -92,13 +118,17 @@ def dashboard():
                              bookings=bookings, 
                              settings=settings,
                              selected_from='',
-                             selected_to='')
+                             selected_to='',
+                             selected_status=[],
+                             selected_slot=[])
     else:
         return render_template('admin_dashboard.html', 
                              bookings=bookings, 
                              settings=settings,
                              selected_from=filter_from or '',
-                             selected_to=filter_to or '')
+                             selected_to=filter_to or '',
+                             selected_status=filter_status or [],
+                             selected_slot=filter_slot or [])
 
 @admin_bp.route('/calendar')
 @login_required
@@ -548,8 +578,26 @@ def occupancy_detail():
 
         bookings_by_slot = {}
         bookings_count = 0
-        # Fetch bookings for allowed dates only
-        for b in db.bookings.find({'date': {'$in': allowed_dates}}):
+        # Build booking query and fetch bookings for allowed dates only
+        booking_query = {'date': {'$in': allowed_dates}}
+        # Optionally filter by status and slot if provided by admin
+        try:
+            filter_status = request.args.getlist('status') or []
+            filter_slot = request.args.getlist('slot') or []
+            if filter_status:
+                if len(filter_status) == 1:
+                    booking_query['status'] = filter_status[0]
+                else:
+                    booking_query['status'] = {'$in': filter_status}
+            if filter_slot:
+                if len(filter_slot) == 1:
+                    booking_query['slot'] = filter_slot[0]
+                else:
+                    booking_query['slot'] = {'$in': filter_slot}
+        except Exception:
+            pass
+
+        for b in db.bookings.find(booking_query):
             s = b.get('slot')
             date_key = b.get('date')
             if date_key not in bookings_by_slot:

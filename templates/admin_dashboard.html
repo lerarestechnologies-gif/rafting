@@ -10,6 +10,18 @@
   </h1>
 
   <div class="bg-white shadow rounded-lg p-4">
+      <style>
+        /* Admin dashboard filter layout tweaks */
+        #admin-filters { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; }
+        #admin-filters .filter-item { display:flex; gap:0.5rem; align-items:center; }
+        #filterStatus, #filterSlot { min-width:160px; max-width:300px; }
+        #filterFrom, #filterTo, #occupancyFrom, #occupancyTo, #occupancyDate { min-width:140px; }
+        .export-btn-compact { padding:0.5rem 0.75rem; font-size:0.95rem; }
+        @media (max-width: 768px) {
+          #admin-filters { width:100%; }
+          .export-btn-compact { margin-bottom:0.5rem; }
+        }
+      </style>
     <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
       <div class="flex items-center gap-3 mb-3 md:mb-0">
         <h2 class="text-lg font-semibold">
@@ -21,14 +33,14 @@
         </h2>
         {% if not current_user.is_subadmin() %}
         <button onclick="exportAllBookingsToPDF()" 
-                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+          class="bg-blue-600 hover:bg-blue-700 text-white export-btn-compact rounded text-sm font-medium transition-colors flex items-center gap-2">
           <span>📄</span>
           <span>Export to PDF</span>
         </button>
         {% endif %}
       </div>
       {% if not current_user.is_subadmin() %}
-      <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+      <div id="admin-filters" class="flex items-center gap-3">
         <!-- Date Range Filter: From / To -->
         <div class="flex items-center gap-2">
           <label for="filterFrom" class="text-sm font-medium text-gray-700 whitespace-nowrap">From:</label>
@@ -37,6 +49,25 @@
         <div class="flex items-center gap-2">
           <label for="filterTo" class="text-sm font-medium text-gray-700 whitespace-nowrap">To:</label>
           <input type="date" id="filterTo" name="filterTo" value="{{ selected_to }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+        </div>
+        <!-- Status Filter -->
+        <div class="flex items-center gap-2">
+          <label for="filterStatus" class="text-sm font-medium text-gray-700 whitespace-nowrap">Status:</label>
+          <select id="filterStatus" multiple size="3" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            {% set statuses = ['Confirmed','Pending','Cancelled'] %}
+            {% for s in statuses %}
+              <option value="{{ s }}" {% if s in (selected_status if selected_status else []) %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <!-- Slot Filter -->
+        <div class="flex items-center gap-2">
+          <label for="filterSlot" class="text-sm font-medium text-gray-700 whitespace-nowrap">Slot:</label>
+          <select id="filterSlot" multiple size="3" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            {% for slot in (settings.time_slots if settings and settings.time_slots else []) %}
+              <option value="{{ slot }}" {% if slot in (selected_slot if selected_slot else []) %}selected{% endif %}>{{ slot }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="flex items-center gap-2">
           <button onclick="applyDateFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">Filter</button>
@@ -140,7 +171,7 @@
       </h2>
       {% if not current_user.is_subadmin() %}
       <button onclick="exportOccupancyOverviewToPDF()" 
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+              class="bg-blue-600 hover:bg-blue-700 text-white export-btn-compact rounded text-sm font-medium transition-colors flex items-center gap-2">
         <span>📄</span>
         <span>Export to PDF</span>
       </button>
@@ -310,8 +341,21 @@ function parseTimeSlotStart(slot) {
 
 async function fetchOccupancy(day) {
   let url = '/admin/occupancy_detail';
-  // Both Admin and Sub-Admin: Use day parameter
-  if (day) url += '?day=' + day;
+  // Both Admin and Sub-Admin: Use day parameter and include optional status/slot filters
+  const params = new URLSearchParams();
+  if (day) params.append('day', day);
+  // include status/slot filters from dashboard UI if present
+  const statusEl = document.getElementById('filterStatus');
+  if (statusEl) {
+    const sel = Array.from(statusEl.selectedOptions).map(o => o.value);
+    sel.forEach(s => params.append('status', s));
+  }
+  const slotEl = document.getElementById('filterSlot');
+  if (slotEl) {
+    const sel = Array.from(slotEl.selectedOptions).map(o => o.value);
+    sel.forEach(s => params.append('slot', s));
+  }
+  if (params.toString()) url += '?' + params.toString();
   const res = await fetch(url);
   if (!res.ok) {
     console.error('Occupancy fetch failed', res.status);
@@ -485,11 +529,22 @@ function setupDateFilter() {
 function applyDateFilter() {
   const from = document.getElementById('filterFrom')?.value;
   const to = document.getElementById('filterTo')?.value;
-
-  // Build query parameters
+  // Build query parameters (include status and slot selections)
   const params = new URLSearchParams();
   if (from) params.append('from_date', from);
   if (to) params.append('to_date', to);
+
+  const statusEl = document.getElementById('filterStatus');
+  if (statusEl) {
+    const selected = Array.from(statusEl.selectedOptions).map(o => o.value);
+    selected.forEach(s => params.append('status', s));
+  }
+
+  const slotEl = document.getElementById('filterSlot');
+  if (slotEl) {
+    const selected = Array.from(slotEl.selectedOptions).map(o => o.value);
+    selected.forEach(s => params.append('slot', s));
+  }
 
   const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
   window.location.href = url;
@@ -702,13 +757,24 @@ function exportAllBookingsToPDF() {
   doc.setFontSize(10);
   const now = new Date();
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
+
+  const filterStatus = (document.getElementById('filterStatus') && Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)) || [];
+  const filterSlot = (document.getElementById('filterSlot') && Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)) || [];
   
   // Filter info if applicable (From / To range)
   const filterFrom = document.getElementById('filterFrom')?.value;
   const filterTo = document.getElementById('filterTo')?.value;
+  const filterStatus = (document.getElementById('filterStatus') && Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)) || [];
+  const filterSlot = (document.getElementById('filterSlot') && Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)) || [];
   if (filterFrom || filterTo) {
     const rangeText = `${filterFrom || ''}${filterFrom && filterTo ? ' - ' : ''}${filterTo || ''}`;
     doc.text(`Filtered by Date Range: ${rangeText}`, 14, 27);
+  }
+  if (filterStatus && filterStatus.length > 0) {
+    doc.text(`Filtered by Status: ${filterStatus.join(', ')}`, 14, 31);
+  }
+  if (filterSlot && filterSlot.length > 0) {
+    doc.text(`Filtered by Slot: ${filterSlot.join(', ')}`, 14, 35);
   }
   
   // Table columns (RAFT columns removed)
@@ -769,9 +835,11 @@ function exportAllBookingsToPDF() {
   }
   
   // Save PDF (include range in filename when present)
-  const filename = (filterFrom || filterTo)
-    ? `All_Bookings_${filterFrom || 'from'}_${filterTo || 'to'}_${now.toISOString().slice(0,10)}.pdf`
-    : `All_Bookings_${now.toISOString().slice(0,10)}.pdf`;
+  let filename = 'All_Bookings_' + now.toISOString().slice(0,10);
+  if (filterFrom || filterTo) filename = `All_Bookings_${filterFrom || 'from'}_${filterTo || 'to'}_${now.toISOString().slice(0,10)}`;
+  if (filterStatus && filterStatus.length) filename += `_status_${filterStatus.join('-')}`;
+  if (filterSlot && filterSlot.length) filename += `_slot_${filterSlot.map(s => s.replace(/\s+/g,'')).join('-')}`;
+  filename += '.pdf';
   doc.save(filename);
 }
 
@@ -891,11 +959,14 @@ async function exportOccupancyOverviewToPDF() {
   // Save PDF — build filename using range or single date
   let filename;
   if (occFrom && occTo) {
-    filename = `Occupancy_Overview_${occFrom}_${occTo}_${now.toISOString().slice(0,10)}.pdf`;
+    filename = `Occupancy_Overview_${occFrom}_${occTo}_${now.toISOString().slice(0,10)}`;
   } else {
     const single = singleOcc;
-    filename = `Occupancy_Overview_${single}_${now.toISOString().slice(0,10)}.pdf`;
+    filename = `Occupancy_Overview_${single}_${now.toISOString().slice(0,10)}`;
   }
+  if (filterStatus && filterStatus.length) filename += `_status_${filterStatus.join('-')}`;
+  if (filterSlot && filterSlot.length) filename += `_slot_${filterSlot.map(s => s.replace(/\s+/g,'')).join('-')}`;
+  filename += '.pdf';
   doc.save(filename);
 }
 
