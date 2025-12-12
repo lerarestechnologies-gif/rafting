@@ -34,7 +34,7 @@ body {
 /* Hero Section */
 .hero-section {
   background: linear-gradient(rgba(26, 82, 118, 0.8), rgba(26, 82, 118, 0.8)),
-              url('/static/images/images/river%20rafting.jpg') no-repeat center center/cover;
+              url('/static/images/images/main%20image.jpg') no-repeat center center/cover;
   background-color: var(--primary); /* Fallback color if image doesn't load */
   padding: 150px 0 100px;
   color: white;
