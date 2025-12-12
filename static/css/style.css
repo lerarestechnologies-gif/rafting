@@ -67,6 +67,31 @@ body {
   color: #fff;
 }
 
+/* Instructions button (light blue) - consistent with design system */
+.btn-instructions {
+  background-color: #cfeffd; /* light blue */
+  color: #0b3a57; /* darker blue text for contrast */
+  border: none;
+  border-radius: 30px;
+  padding: 12px 28px;
+  font-weight: 600;
+  box-shadow: 0 6px 14px rgba(15, 98, 150, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-instructions:hover,
+.btn-instructions:focus {
+  background-color: #b6e6ff;
+  color: #05314a;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 98, 150, 0.12);
+}
+
+/* Ensure buttons remain nicely spaced on small screens */
+.hero-section .d-flex .btn {
+  min-width: 180px;
+}
+
 /* Section Titles */
 .section-title {
   text-align: center;
