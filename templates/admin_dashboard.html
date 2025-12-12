@@ -29,34 +29,19 @@
       </div>
       {% if not current_user.is_subadmin() %}
       <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <!-- Filter Type (Daily/Weekly/Monthly) -->
+        <!-- Date Range Filter: From / To -->
         <div class="flex items-center gap-2">
-          <label for="filterType" class="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
-          <select id="filterType" 
-                  class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-            <option value="">All</option>
-            <option value="daily" {% if filter_type == 'daily' %}selected{% endif %}>Daily</option>
-            <option value="weekly" {% if filter_type == 'weekly' %}selected{% endif %}>Weekly</option>
-            <option value="monthly" {% if filter_type == 'monthly' %}selected{% endif %}>Monthly</option>
-          </select>
+          <label for="filterFrom" class="text-sm font-medium text-gray-700 whitespace-nowrap">From:</label>
+          <input type="date" id="filterFrom" name="filterFrom" value="{{ selected_from }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
         </div>
-        <!-- Date Filter (for Daily) -->
         <div class="flex items-center gap-2">
-          <label for="filterDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Date:</label>
-          <input type="date" 
-                 id="filterDate" 
-                 name="filterDate"
-                 value="{{ selected_date }}"
-                 class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          <button onclick="applyDateFilter()" 
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
-            Apply
-          </button>
-          {% if selected_date or filter_type %}
-          <button onclick="clearDateFilter()" 
-                  class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
-            Clear
-          </button>
+          <label for="filterTo" class="text-sm font-medium text-gray-700 whitespace-nowrap">To:</label>
+          <input type="date" id="filterTo" name="filterTo" value="{{ selected_to }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="applyDateFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium">Filter</button>
+          {% if selected_from or selected_to %}
+          <button onclick="clearDateFilter()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm font-medium">Clear</button>
           {% endif %}
         </div>
       </div>
@@ -68,7 +53,7 @@
       <span id="bookingCount">{{ bookings|length }}</span> booking{{ 's' if bookings|length != 1 else '' }} found
       {% if current_user.is_subadmin() %}
         <span class="text-blue-600">(Today & Tomorrow only)</span>
-      {% elif selected_date %}
+      {% elif selected_from or selected_to %}
         <span class="text-blue-600">(filtered)</span>
       {% endif %}
     </div>
@@ -133,8 +118,8 @@
         <p class="text-sm mt-2">
           {% if current_user.is_subadmin() %}
             No confirmed bookings for today or tomorrow.
-          {% elif selected_date %}
-            Try adjusting your date filter or 
+          {% elif selected_from or selected_to %}
+            Try adjusting your date range or 
             <button onclick="clearDateFilter()" class="text-blue-600 hover:underline">clear the filter</button> to see all bookings.
           {% else %}
             There are no bookings in the system yet.
@@ -170,57 +155,122 @@
       <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
     </div>
     {% else %}
-    <!-- Admin: Filter type and date picker -->
+    <!-- Admin: Date range picker for occupancy -->
     <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyFilterType" class="font-medium">Filter:</label>
-      <select id="occupancyFilterType" 
-              class="border px-2 py-1 rounded">
-        <option value="">All</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="monthly">Monthly</option>
-      </select>
-    </div>
-    <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyDate" class="font-medium">Select date:</label>
-      <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
-      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+      <label for="occupancyFrom" class="font-medium">From:</label>
+      <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
+      <label for="occupancyTo" class="font-medium">To:</label>
+      <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
+      <button id="occupancyFilterBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Filter</button>
+      <button id="occupancyClearBtn" class="bg-gray-300 text-gray-800 px-3 py-1 rounded">Clear</button>
       <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
     </div>
     {% endif %}
     {% if not current_user.is_subadmin() %}
     <script>
-    // Handle occupancy filter type change (Admin only)
+    // Occupancy: handle From/To filtering for admin
     document.addEventListener('DOMContentLoaded', function() {
-      const occupancyFilterType = document.getElementById('occupancyFilterType');
-      if (occupancyFilterType) {
-        occupancyFilterType.addEventListener('change', function() {
-          const filterType = this.value;
-          const dateInp = document.getElementById('occupancyDate');
-          const today = new Date();
-          
-          if (filterType === 'daily') {
-            dateInp.value = today.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else if (filterType === 'weekly') {
-            // Get start of week (Monday)
-            const daysSinceMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
-            const weekStart = new Date(today);
-            weekStart.setDate(today.getDate() - daysSinceMonday);
-            dateInp.value = weekStart.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else if (filterType === 'monthly') {
-            // Get start of month
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            dateInp.value = monthStart.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else {
-            // All - show today
-            dateInp.value = today.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          }
-        });
+      const filterBtn = document.getElementById('occupancyFilterBtn');
+      const clearBtn = document.getElementById('occupancyClearBtn');
+      const fromInp = document.getElementById('occupancyFrom');
+      const toInp = document.getElementById('occupancyTo');
+
+      function getDatesInRange(from, to) {
+        const dates = [];
+        let cur = new Date(from);
+        const end = new Date(to);
+        while (cur <= end) {
+          dates.push(cur.toISOString().slice(0,10));
+          cur.setDate(cur.getDate() + 1);
+        }
+        return dates;
       }
+
+      async function renderOccupancyRange(from, to) {
+        const container = document.getElementById('occupancyDetail');
+        container.innerHTML = '';
+        if (!from || !to) {
+          // Fallback to single-day render
+          await renderOccupancy(from || new Date().toISOString().slice(0,10));
+          return;
+        }
+        const dates = getDatesInRange(from, to);
+        for (const d of dates) {
+          const data = await fetchOccupancy(d);
+          const header = document.createElement('h3');
+          header.className = 'text-sm font-semibold mb-2';
+          header.textContent = d;
+          container.appendChild(header);
+
+          // reuse logic similar to renderOccupancy but append per-date
+          const slotOrder = [];
+          for (const s of timeSlots) {
+            if (Object.prototype.hasOwnProperty.call(data, s)) slotOrder.push(s);
+          }
+          const others = Object.keys(data).filter(s => !timeSlots.includes(s));
+          others.sort((a,b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+          slotOrder.push(...others);
+
+          for (const slot of slotOrder) {
+            const rafts = data[slot];
+            if (!Array.isArray(rafts) || rafts.length === 0) continue;
+            const slotCard = document.createElement('div');
+            slotCard.className = 'p-3 border rounded mb-3';
+            const hdr = document.createElement('div');
+            hdr.innerHTML = `<strong>${slot}</strong>`;
+            slotCard.appendChild(hdr);
+            const raftRow = document.createElement('div');
+            raftRow.className = 'mt-2';
+
+            const validRafts = rafts.map(r => ({
+              ...r,
+              occupancy: Math.max(0, r.occupancy || 0),
+              capacity: r.capacity || defaultCapacity,
+              is_special: r.is_special && (Math.max(0, r.occupancy || 0) > 0)
+            }));
+
+            for (const r of validRafts) {
+              const sq = makeRaftSquare(r);
+              raftRow.appendChild(sq);
+            }
+            slotCard.appendChild(raftRow);
+            container.appendChild(slotCard);
+          }
+        }
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+      }
+
+      if (filterBtn) filterBtn.addEventListener('click', function() {
+        const from = fromInp.value;
+        const to = toInp.value;
+        if (from && to) {
+          if (from > to) {
+            alert('From date must be earlier than or equal to To date.');
+            return;
+          }
+          renderOccupancyRange(from, to);
+          return;
+        }
+        // Allow single-date filtering: use whichever date is provided
+        const single = from || to;
+        if (!single) {
+          alert('Please select at least one date (From or To) to filter.');
+          return;
+        }
+        // Render single date using existing renderOccupancy
+        renderOccupancy(single);
+      });
+
+      if (clearBtn) clearBtn.addEventListener('click', function() {
+        fromInp.value = '';
+        toInp.value = '';
+        // default render today
+        renderOccupancy(new Date().toISOString().slice(0,10));
+      });
+
+      // On first load show today
+      renderOccupancy(new Date().toISOString().slice(0,10));
     });
     </script>
     {% endif %}
@@ -433,31 +483,20 @@ function setupDateFilter() {
 }
 
 function applyDateFilter() {
-  const filterDate = document.getElementById('filterDate').value;
-  const filterType = document.getElementById('filterType').value;
-  
+  const from = document.getElementById('filterFrom')?.value;
+  const to = document.getElementById('filterTo')?.value;
+
   // Build query parameters
   const params = new URLSearchParams();
-  
-  if (filterType) {
-    params.append('filter_type', filterType);
-  }
-  
-  if (filterDate) {
-    params.append('date', filterDate);
-  }
-  
-  // Navigate to filtered view
+  if (from) params.append('from_date', from);
+  if (to) params.append('to_date', to);
+
   const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
   window.location.href = url;
 }
 
 function clearDateFilter() {
-  // Clear date input and filter type
-  document.getElementById('filterDate').value = '';
-  document.getElementById('filterType').value = '';
-  
-  // Navigate to dashboard without filters
+  // Navigate to dashboard without filters (server will return all)
   window.location.href = '/admin/dashboard';
 }
 </script>
@@ -664,10 +703,12 @@ function exportAllBookingsToPDF() {
   const now = new Date();
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
   
-  // Filter info if applicable
-  const filterDate = document.getElementById('filterDate')?.value;
-  if (filterDate) {
-    doc.text(`Filtered by Date: ${filterDate}`, 14, 27);
+  // Filter info if applicable (From / To range)
+  const filterFrom = document.getElementById('filterFrom')?.value;
+  const filterTo = document.getElementById('filterTo')?.value;
+  if (filterFrom || filterTo) {
+    const rangeText = `${filterFrom || ''}${filterFrom && filterTo ? ' - ' : ''}${filterTo || ''}`;
+    doc.text(`Filtered by Date Range: ${rangeText}`, 14, 27);
   }
   
   // Table columns (RAFT columns removed)
@@ -727,9 +768,9 @@ function exportAllBookingsToPDF() {
     );
   }
   
-  // Save PDF
-  const filename = filterDate 
-    ? `All_Bookings_${filterDate}_${now.toISOString().slice(0,10)}.pdf`
+  // Save PDF (include range in filename when present)
+  const filename = (filterFrom || filterTo)
+    ? `All_Bookings_${filterFrom || 'from'}_${filterTo || 'to'}_${now.toISOString().slice(0,10)}.pdf`
     : `All_Bookings_${now.toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
 }
@@ -738,85 +779,100 @@ async function exportOccupancyOverviewToPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   
-  // Get current date from occupancy date picker
-  const occupancyDate = document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0, 10);
-  
-  // Fetch occupancy data
-  const occupancyData = await fetchOccupancy(occupancyDate);
-  
+  // Determine occupancy export range
+  const occFrom = document.getElementById('occupancyFrom')?.value;
+  const occTo = document.getElementById('occupancyTo')?.value;
+
   // Title
   doc.setFontSize(18);
   doc.text('Occupancy Overview Report', 14, 15);
-  
+
   // Date and time
   doc.setFontSize(10);
   const now = new Date();
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
-  doc.text(`Report Date: ${occupancyDate}`, 14, 27);
-  
-  // Process occupancy data
-  const tableRows = [];
-  let totalOccupancy = 0;
-  let totalCapacity = 0;
-  
-  if (occupancyData && Object.keys(occupancyData).length > 0) {
-    for (const [slot, rafts] of Object.entries(occupancyData)) {
-      if (Array.isArray(rafts) && rafts.length > 0) {
-        const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
-        const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
-        const available = (slotCapacity - slotOccupancy).toString();
-        const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
 
-        tableRows.push([
-          slot,
-          slotOccupancy.toString(),
-          available,
-          `${occupancyPercent}%`
-        ]);
-
-        totalOccupancy += slotOccupancy;
-        totalCapacity += slotCapacity;
-      }
-    }
-
-    // Add summary row
-    const totalOccupancyPercent = totalCapacity > 0 ? ((totalOccupancy / totalCapacity) * 100).toFixed(1) : 0;
-    tableRows.push([
-      'TOTAL',
-      totalOccupancy.toString(),
-      (totalCapacity - totalOccupancy).toString(),
-      `${totalOccupancyPercent}%`
-    ]);
-  }
-  
-  if (tableRows.length === 0) {
-    doc.text('No occupancy data available for this date', 14, 35);
-  } else {
-    // Table columns (RAFT columns removed)
-    const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
-    
-    // Add table
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 32,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [66, 139, 202] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { top: 32 },
-      didDrawPage: function(data) {
-        // Highlight total row
-        if (data.pageNumber === data.pageCount) {
-          const lastRow = data.table.body[data.table.body.length - 1];
-          if (lastRow && lastRow[0] && lastRow[0].text === 'TOTAL') {
-            doc.setFillColor(220, 220, 220);
-            doc.rect(data.table.startX, lastRow.y, data.table.width, lastRow.height, 'F');
-          }
+  // Helper to build table rows from occupancy data
+  function buildRowsFromData(occupancyData) {
+    const rows = [];
+    let totalOcc = 0;
+    let totalCap = 0;
+    if (occupancyData && Object.keys(occupancyData).length > 0) {
+      for (const [slot, rafts] of Object.entries(occupancyData)) {
+        if (Array.isArray(rafts) && rafts.length > 0) {
+          const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
+          const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
+          const available = (slotCapacity - slotOccupancy).toString();
+          const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
+          rows.push([slot, slotOccupancy.toString(), available, `${occupancyPercent}%`]);
+          totalOcc += slotOccupancy;
+          totalCap += slotCapacity;
         }
       }
-    });
-    
-    // Detailed raft information removed from PDF export to avoid RAFT fields
+    }
+    const totalOccPercent = totalCap > 0 ? ((totalOcc / totalCap) * 100).toFixed(1) : 0;
+    if (rows.length > 0) rows.push(['TOTAL', totalOcc.toString(), (totalCap - totalOcc).toString(), `${totalOccPercent}%`]);
+    return rows;
+  }
+
+  // Determine a single date fallback (admin uses occupancyFrom/To, subadmin uses occupancyDate)
+  const singleOcc = occFrom || occTo || document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0,10);
+
+  // If a range is provided, export each date in the range
+  if (occFrom && occTo) {
+    // Small helper to iterate dates
+    function getDates(from, to) {
+      const arr = [];
+      const cur = new Date(from);
+      const end = new Date(to);
+      while (cur <= end) {
+        arr.push(cur.toISOString().slice(0,10));
+        cur.setDate(cur.getDate() + 1);
+      }
+      return arr;
+    }
+
+    const dates = getDates(occFrom, occTo);
+    doc.setFontSize(10);
+    for (const d of dates) {
+      doc.text(`Report Date: ${d}`, 14, doc.lastAutoTable ? (doc.lastAutoTable.finalY + 10) : 27);
+      const data = await fetchOccupancy(d);
+      const tableRows = buildRowsFromData(data);
+      if (tableRows.length === 0) {
+        doc.text(`No occupancy data available for ${d}`, 14, doc.lastAutoTable ? (doc.lastAutoTable.finalY + 18) : 35);
+        continue;
+      }
+      const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: doc.lastAutoTable ? (doc.lastAutoTable.finalY + 12) : 32,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [66, 139, 202] },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { top: 32 }
+      });
+    }
+  } else {
+    // Single-date export (either admin single date or subadmin occupancyDate)
+    const occupancyDate = singleOcc;
+    doc.text(`Report Date: ${occupancyDate}`, 14, 27);
+    const occupancyData = await fetchOccupancy(occupancyDate);
+    const tableRows = buildRowsFromData(occupancyData);
+    if (tableRows.length === 0) {
+      doc.text('No occupancy data available for this date', 14, 35);
+    } else {
+      const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 32,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [66, 139, 202] },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { top: 32 }
+      });
+    }
   }
   
   // Footer
@@ -832,8 +888,14 @@ async function exportOccupancyOverviewToPDF() {
     );
   }
   
-  // Save PDF
-  const filename = `Occupancy_Overview_${occupancyDate}_${now.toISOString().slice(0,10)}.pdf`;
+  // Save PDF — build filename using range or single date
+  let filename;
+  if (occFrom && occTo) {
+    filename = `Occupancy_Overview_${occFrom}_${occTo}_${now.toISOString().slice(0,10)}.pdf`;
+  } else {
+    const single = singleOcc;
+    filename = `Occupancy_Overview_${single}_${now.toISOString().slice(0,10)}.pdf`;
+  }
   doc.save(filename);
 }
 

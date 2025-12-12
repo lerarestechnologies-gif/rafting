@@ -52,35 +52,36 @@ def dashboard():
         filter_type = ''
         filter_date = ''
     else:
-        # Admin: Use filter parameters
-        filter_type = request.args.get('filter_type', '')  # daily, weekly, monthly
-        filter_date = request.args.get('date', '')
-        
-        if filter_type == 'daily' and filter_date:
-            query_filter['date'] = filter_date
-        elif filter_type == 'weekly':
-            # Get start of week (Monday)
-            days_since_monday = today.weekday()
-            week_start = today - datetime.timedelta(days=days_since_monday)
-            week_end = week_start + datetime.timedelta(days=6)
-            query_filter['date'] = {
-                '$gte': week_start.isoformat(),
-                '$lte': week_end.isoformat()
-            }
-        elif filter_type == 'monthly':
-            # Get start and end of current month
-            month_start = today.replace(day=1)
-            if today.month == 12:
-                month_end = today.replace(day=31)
-            else:
-                month_end = (today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1))
-            query_filter['date'] = {
-                '$gte': month_start.isoformat(),
-                '$lte': month_end.isoformat()
-            }
-        elif filter_date:
-            # Single date filter (backward compatibility)
-            query_filter['date'] = filter_date
+        # Admin: Use From/To date range parameters (inclusive)
+        filter_from = request.args.get('from_date', '')
+        filter_to = request.args.get('to_date', '')
+
+        # Validate and apply range filters
+        if filter_from and filter_to:
+            try:
+                # Ensure valid ISO date strings
+                _ = datetime.date.fromisoformat(filter_from)
+                _ = datetime.date.fromisoformat(filter_to)
+                # If from > to, swap to be safe
+                if filter_from > filter_to:
+                    filter_from, filter_to = filter_to, filter_from
+                query_filter['date'] = {'$gte': filter_from, '$lte': filter_to}
+            except Exception:
+                # Ignore invalid inputs and do not filter
+                pass
+        elif filter_from:
+            # Single start date: treat as exact date
+            try:
+                _ = datetime.date.fromisoformat(filter_from)
+                query_filter['date'] = filter_from
+            except Exception:
+                pass
+        elif filter_to:
+            try:
+                _ = datetime.date.fromisoformat(filter_to)
+                query_filter['date'] = filter_to
+            except Exception:
+                pass
     
     # Fetch bookings with filters
     bookings = list(db.bookings.find(query_filter).sort('created_at', -1).limit(500))
@@ -90,14 +91,14 @@ def dashboard():
         return render_template('admin_dashboard.html', 
                              bookings=bookings, 
                              settings=settings,
-                             selected_date='',
-                             filter_type='')
+                             selected_from='',
+                             selected_to='')
     else:
         return render_template('admin_dashboard.html', 
                              bookings=bookings, 
                              settings=settings,
-                             selected_date=filter_date or '',
-                             filter_type=filter_type)
+                             selected_from=filter_from or '',
+                             selected_to=filter_to or '')
 
 @admin_bp.route('/calendar')
 @login_required
