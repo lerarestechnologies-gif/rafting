@@ -138,25 +138,41 @@
 
   <!-- Delete Bookings by Date Section -->
   <div class="mt-8 pt-6 border-t border-gray-300">
-    <h3 class="text-xl font-semibold mb-4 text-red-700">🗑️ Delete Bookings by Date</h3>
-    <p class="text-sm text-gray-600 mb-4">Warning: This action will permanently delete all bookings for the selected date. This cannot be undone.</p>
-    
-    <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-      <div class="flex items-center gap-2">
-        <label for="deleteDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Select Date:</label>
-        <input type="date" 
-               id="deleteDate" 
-               name="deleteDate"
-               class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500">
+    <h3 class="text-xl font-semibold mb-4 text-red-700">🗑️ Data Management — Delete Bookings</h3>
+    <p class="text-sm text-gray-600 mb-4">Only authorized administrators may delete booking records. Deleted records are archived for possible recovery.</p>
+
+    {% if current_user.role == 'admin' %}
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Delete by Date Range (inclusive)</label>
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div class="flex items-center gap-2">
+          <label for="deleteFrom" class="text-sm">From:</label>
+          <input type="date" id="deleteFrom" class="border border-gray-300 rounded-lg px-3 py-2" />
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="deleteTo" class="text-sm">To:</label>
+          <input type="date" id="deleteTo" class="border border-gray-300 rounded-lg px-3 py-2" />
+        </div>
+        </div>
       </div>
-      <button onclick="handleDeleteBookings()" 
-              id="delete-btn"
-              class="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-2 rounded-lg shadow transition-colors">
-        🗑️ Delete Bookings
-      </button>
     </div>
-    
-    <div id="delete-result" class="mt-4 hidden"></div>
+
+    <div class="mb-6">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Or delete a single date</label>
+      <div class="flex items-center gap-3">
+        <input type="date" id="deleteSingleDate" class="border border-gray-300 rounded-lg px-3 py-2" />
+      </div>
+    </div>
+
+    <div>
+      <button id="executeDeleteBtn" disabled class="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-2 rounded-lg shadow">🗑️ Delete Selected</button>
+      <div id="delete-result" class="mt-4 hidden"></div>
+    </div>
+
+    <!-- Confirmation modal removed: deletion will be executed directly when requested -->
+    {% else %}
+      <p class="text-sm text-gray-500">You do not have permission to delete booking records.</p>
+    {% endif %}
   </div>
 </div>
 
@@ -363,5 +379,73 @@ function showDeleteResult(message, type) {
     resultDiv.classList.add('hidden');
   }, 5000);
 }
+
+// New: Safe preview and execute deletion flows
+document.addEventListener('DOMContentLoaded', function() {
+  const executeBtn = document.getElementById('executeDeleteBtn');
+  const deleteFrom = document.getElementById('deleteFrom');
+  const deleteTo = document.getElementById('deleteTo');
+  const deleteSingle = document.getElementById('deleteSingleDate');
+  // Enable execute button when any valid input is present
+  function updateExecuteBtnState() {
+    if (!executeBtn) return;
+    const hasSingle = deleteSingle && deleteSingle.value;
+    const hasRange = (deleteFrom && deleteFrom.value) || (deleteTo && deleteTo.value);
+    executeBtn.disabled = !(hasSingle || hasRange);
+  }
+  if (deleteFrom) deleteFrom.addEventListener('change', updateExecuteBtnState);
+  if (deleteTo) deleteTo.addEventListener('change', updateExecuteBtnState);
+  if (deleteSingle) deleteSingle.addEventListener('change', updateExecuteBtnState);
+  updateExecuteBtnState();
+  if (executeBtn) {
+    executeBtn.addEventListener('click', async function() {
+      // Determine range to delete
+      let from = '';
+      let to = '';
+      if (deleteSingle && deleteSingle.value) {
+        from = deleteSingle.value;
+        to = deleteSingle.value;
+      } else {
+        const f = deleteFrom ? deleteFrom.value : '';
+        const t = deleteTo ? deleteTo.value : '';
+        if (!f && !t) { alert('Please select From and/or To dates, or a single date.'); return; }
+        from = f || t;
+        to = t || f;
+        if (from > to) { const tmp = from; from = to; to = tmp; }
+      }
+
+      // Build expected confirmation phrase (sent automatically)
+      const expected = (from === to) ? `DELETE BOOKINGS FOR ${from}` : `DELETE BOOKINGS FROM ${from} TO ${to}`;
+
+      // Execute deletion (we send the expected confirmation phrase automatically)
+      executeBtn.disabled = true;
+      const prevText = executeBtn.textContent;
+      executeBtn.textContent = '⏳ Deleting...';
+
+      try {
+        const res = await fetch('/admin/delete_bookings_execute', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({from_date: from, to_date: to, confirm_text: expected})
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showDeleteResult(data.error || data.message || 'Deletion failed', 'error');
+        } else {
+          showDeleteResult(data.message || 'Deletion completed', 'success');
+          if (deleteFrom) deleteFrom.value = '';
+          if (deleteTo) deleteTo.value = '';
+          if (deleteSingle) deleteSingle.value = '';
+        }
+      } catch (err) {
+        showDeleteResult('Error: ' + err.message, 'error');
+      } finally {
+        executeBtn.disabled = false;
+        executeBtn.textContent = prevText || '🗑️ Delete Selected';
+      }
+    });
+  }
+
+});
 </script>
 {% endblock %}

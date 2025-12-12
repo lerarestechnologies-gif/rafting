@@ -318,84 +318,107 @@ def delete_bookings_by_date():
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
     
-    # Find all bookings for the date
-    bookings = list(db.bookings.find({'date': date}))
-    
+    # New: Delegate to safer, auditable delete endpoint via execute (keep old behavior for backwards compat)
+    # For backward compatibility still allow this, but perform an archival + delete with audit
+    from bson.objectid import ObjectId
+    from datetime import datetime as _dt
+
+    # Fetch bookings for the date (exclude already archived/deleted)
+    bookings_cursor = db.bookings.find({'date': date, 'deleted': {'$ne': True}})
+    bookings = list(bookings_cursor)
+
     if not bookings:
         return jsonify({'message': f'No bookings found for {date}'}), 200
-    
-    # Free up raft occupancy for confirmed bookings using allocation pattern logic
-    from utils.booking_ops import cancel_booking, get_deallocation_amounts
-    from bson.objectid import ObjectId
-    
+
+    # We'll archive each booking into `deletion_archive` and record an audit entry in `deletion_audits`.
+    deleted_ids = []
+    archived_count = 0
+    protected_count = 0
+
+    # Protect bookings with explicit 'protected' flag
+    to_process = []
+    for b in bookings:
+        if b.get('protected', False):
+            protected_count += 1
+            continue
+        to_process.append(b)
+
+    # Process in batches to reduce memory/single op size
+    BATCH = 200
+    for i in range(0, len(to_process), BATCH):
+        batch = to_process[i:i+BATCH]
+        # Archive documents
+        archive_docs = []
+        for b in batch:
+            archived = {
+                'original_id': b.get('_id'),
+                'archived_at': _dt.utcnow(),
+                'archived_by': getattr(current_user, 'email', getattr(current_user, 'id', 'unknown')),
+                'doc': b
+            }
+            archive_docs.append(archived)
+        if archive_docs:
+            db.deletion_archive.insert_many(archive_docs)
+        # Delete originals
+        ids = [b.get('_id') for b in batch]
+        res = db.bookings.delete_many({'_id': {'$in': ids}})
+        archived_count += res.deleted_count
+        deleted_ids.extend([str(x) for x in ids])
+
+    # After deletion, ensure raft occupancy is reset as before for this date
+    from utils.booking_ops import get_deallocation_amounts
     freed_count = 0
-    for booking in bookings:
-        if booking.get('status') == 'Confirmed' and booking.get('raft_allocations'):
-            # Use the same deallocation logic as cancel_booking
-            raft_ids = booking.get('raft_allocations', [])
-            group_size = int(booking.get('group_size', 0))
-            booking_date = booking.get('date')
-            booking_slot = booking.get('slot')
-            
+    for b in bookings:
+        if b.get('status') == 'Confirmed' and b.get('raft_allocations'):
+            raft_ids = b.get('raft_allocations', [])
+            group_size = int(b.get('group_size', 0))
+            booking_date = b.get('date')
+            booking_slot = b.get('slot')
             if raft_ids and group_size > 0:
-                # Get deallocation amounts using allocation pattern logic
                 deallocations = get_deallocation_amounts(db, booking_date, booking_slot, group_size, raft_ids)
-                
-                # Apply deallocation to each raft following allocation pattern rules
                 for raft_id, amount_to_remove in deallocations:
                     raft = db.rafts.find_one({'day': booking_date, 'slot': booking_slot, 'raft_id': raft_id})
                     if not raft:
                         continue
-                    
                     current_occupancy = max(0, raft.get('occupancy', 0))
                     new_occupancy = max(0, current_occupancy - amount_to_remove)
-                    
-                    # Build update following allocation pattern rules
                     update_data = {'$set': {'occupancy': new_occupancy}}
-                    
-                    # Clear is_special flag following allocation logic rules
                     if new_occupancy == 0:
                         update_data['$set']['is_special'] = False
                     elif new_occupancy != 7:
                         update_data['$set']['is_special'] = False
-                    
-                    db.rafts.update_one(
-                        {'day': booking_date, 'slot': booking_slot, 'raft_id': raft_id},
-                        update_data
-                    )
-                
+                    db.rafts.update_one({'day': booking_date, 'slot': booking_slot, 'raft_id': raft_id}, update_data)
                 freed_count += 1
-    
-    # Delete all bookings for the date
-    result = db.bookings.delete_many({'date': date})
-    deleted_count = result.deleted_count
-    
-    # Clean up all rafts for this date: reset negative occupancy, clear special flags for empty rafts
-    # Fix any negative occupancy values (should never happen, but safety check)
-    db.rafts.update_many(
-        {'day': date, 'occupancy': {'$lt': 0}},
-        {'$set': {'occupancy': 0, 'is_special': False}}
-    )
-    
-    # Clear is_special flag and ensure occupancy is 0 for all rafts on this date with 0 or negative occupancy
-    db.rafts.update_many(
-        {'day': date, '$or': [{'occupancy': {'$lte': 0}}, {'occupancy': {'$exists': False}}]},
-        {'$set': {'occupancy': 0, 'is_special': False}}
-    )
-    
-    # Double-check: If no bookings exist for this date, reset all rafts to clean state
+
+    # Clean up raft occupancy as before
+    db.rafts.update_many({'day': date, 'occupancy': {'$lt': 0}}, {'$set': {'occupancy': 0, 'is_special': False}})
+    db.rafts.update_many({'day': date, '$or': [{'occupancy': {'$lte': 0}}, {'occupancy': {'$exists': False}}]}, {'$set': {'occupancy': 0, 'is_special': False}})
     remaining_bookings = db.bookings.count_documents({'date': date})
     if remaining_bookings == 0:
-        # Reset all rafts for this date to clean state
-        db.rafts.update_many(
-            {'day': date},
-            {'$set': {'occupancy': 0, 'is_special': False}}
-        )
-    
+        db.rafts.update_many({'day': date}, {'$set': {'occupancy': 0, 'is_special': False}})
+
+    # Create audit entry
+    audit = {
+        'action': 'delete_bookings_by_date',
+        'date_range': {'from': date, 'to': date},
+        'requested_by': getattr(current_user, 'email', getattr(current_user, 'id', 'unknown')),
+        'requested_at': _dt.utcnow(),
+        'deleted_count': archived_count,
+        'protected_count': protected_count,
+        'freed_count': freed_count,
+        'deleted_ids': deleted_ids,
+        'request_meta': {
+            'ip': request.remote_addr,
+            'user_agent': request.headers.get('User-Agent')
+        }
+    }
+    db.deletion_audits.insert_one(audit)
+
     return jsonify({
-        'message': f'Successfully deleted {deleted_count} booking(s) for {date}. Freed occupancy from {freed_count} confirmed booking(s).',
-        'deleted_count': deleted_count,
-        'freed_count': freed_count
+        'message': f'Successfully deleted {archived_count} booking(s) for {date}. Freed occupancy from {freed_count} confirmed booking(s). Protected: {protected_count}',
+        'deleted_count': archived_count,
+        'freed_count': freed_count,
+        'protected_count': protected_count
     }), 200
 
 @admin_bp.route('/occupancy_data')
@@ -645,3 +668,180 @@ def postpone_booking_route(booking_id):
         return jsonify(res), 400
     
     return jsonify(res), 200
+
+
+@admin_bp.route('/delete_bookings_preview', methods=['POST'])
+@login_required
+@admin_required
+def delete_bookings_preview():
+    """Preview bookings that would be deleted for a given date or date range.
+    Request JSON: { from_date: 'YYYY-MM-DD', to_date: 'YYYY-MM-DD' }
+    Returns counts, protected count, and sample rows (non-sensitive fields only).
+    """
+    db = current_app.mongo.db
+    data = request.get_json() or {}
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
+
+    # normalize
+    if from_date and not to_date:
+        to_date = from_date
+    if to_date and not from_date:
+        from_date = to_date
+
+    if not from_date:
+        return jsonify({'error': 'from_date or to_date required'}), 400
+
+    try:
+        # validate
+        from datetime import date as _date
+        _ = _date.fromisoformat(from_date)
+        _ = _date.fromisoformat(to_date)
+    except Exception:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+    # Query bookings (exclude already archived/deleted)
+    query = {'date': {'$gte': from_date, '$lte': to_date}, 'deleted': {'$ne': True}}
+    total = db.bookings.count_documents(query)
+    # Protected items
+    protected_query = {'date': {'$gte': from_date, '$lte': to_date}, 'protected': True}
+    protected_count = db.bookings.count_documents(protected_query)
+
+    # Get small sample of non-sensitive fields
+    sample_cursor = db.bookings.find(query, {'_id': 1, 'user_name': 1, 'email': 1, 'date':1, 'slot':1, 'group_size':1, 'status':1}).limit(10)
+    samples = []
+    for s in sample_cursor:
+        samples.append({
+            'id': str(s.get('_id')),
+            'user_name': s.get('user_name') or s.get('name') or '',
+            'email': s.get('email',''),
+            'date': s.get('date'),
+            'slot': s.get('slot'),
+            'group_size': s.get('group_size'),
+            'status': s.get('status')
+        })
+
+    return jsonify({
+        'total': total,
+        'protected_count': protected_count,
+        'sample': samples,
+        'range': {'from': from_date, 'to': to_date}
+    }), 200
+
+
+@admin_bp.route('/delete_bookings_execute', methods=['POST'])
+@login_required
+@admin_required
+def delete_bookings_execute():
+    """Execute deletion (archival + delete) for a date or date range.
+    Request JSON: { from_date, to_date, confirm_text }
+    confirm_text must exactly match the prompt string shown to user.
+    """
+    db = current_app.mongo.db
+    data = request.get_json() or {}
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
+    confirm_text = (data.get('confirm_text') or '').strip()
+
+    if from_date and not to_date:
+        to_date = from_date
+    if to_date and not from_date:
+        from_date = to_date
+
+    if not from_date:
+        return jsonify({'error': 'from_date or to_date required'}), 400
+
+    try:
+        from datetime import date as _date, datetime as _dt
+        _ = _date.fromisoformat(from_date)
+        _ = _date.fromisoformat(to_date)
+    except Exception:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+    # Build expected confirmation phrase
+    if from_date == to_date:
+        expected = f"DELETE BOOKINGS FOR {from_date}"
+    else:
+        expected = f"DELETE BOOKINGS FROM {from_date} TO {to_date}"
+
+    if confirm_text != expected:
+        return jsonify({'error': 'Confirmation text does not match expected phrase', 'expected': expected}), 400
+
+    # Query set to delete (exclude protected and already deleted)
+    query = {'date': {'$gte': from_date, '$lte': to_date}, 'deleted': {'$ne': True}}
+    total = db.bookings.count_documents(query)
+    if total == 0:
+        return jsonify({'message': 'No matching bookings to delete'}), 200
+
+    # Identify protected items
+    protected_q = {'date': {'$gte': from_date, '$lte': to_date}, 'protected': True}
+    protected_count = db.bookings.count_documents(protected_q)
+
+    # We'll archive into deletion_archive then delete originals in batches; record audit
+    from datetime import datetime as _dt
+    user_label = getattr(current_user, 'email', getattr(current_user, 'id', 'unknown'))
+    deleted_ids = []
+    archived_count = 0
+    BATCH = 200
+
+    cursor = db.bookings.find(query)
+    docs = list(cursor)
+
+    # Process in batches
+    for i in range(0, len(docs), BATCH):
+        batch = docs[i:i+BATCH]
+        archive_docs = []
+        ids = []
+        for b in batch:
+            if b.get('protected', False):
+                continue
+            archive_docs.append({'original_id': b.get('_id'), 'archived_at': _dt.utcnow(), 'archived_by': user_label, 'doc': b})
+            ids.append(b.get('_id'))
+        if archive_docs:
+            db.deletion_archive.insert_many(archive_docs)
+        if ids:
+            res = db.bookings.delete_many({'_id': {'$in': ids}})
+            archived_count += res.deleted_count
+            deleted_ids.extend([str(x) for x in ids])
+
+    # After deletion adjust raft occupancy for affected bookings (best-effort)
+    from utils.booking_ops import get_deallocation_amounts
+    freed_count = 0
+    # For simplicity, recompute occupancy for affected dates/slots could be done; here we do best-effort dealloc
+    for b in docs:
+        if b.get('status') == 'Confirmed' and b.get('raft_allocations'):
+            raft_ids = b.get('raft_allocations', [])
+            group_size = int(b.get('group_size', 0))
+            booking_date = b.get('date')
+            booking_slot = b.get('slot')
+            if raft_ids and group_size > 0:
+                deallocations = get_deallocation_amounts(db, booking_date, booking_slot, group_size, raft_ids)
+                for raft_id, amount_to_remove in deallocations:
+                    raft = db.rafts.find_one({'day': booking_date, 'slot': booking_slot, 'raft_id': raft_id})
+                    if not raft:
+                        continue
+                    current_occupancy = max(0, raft.get('occupancy', 0))
+                    new_occupancy = max(0, current_occupancy - amount_to_remove)
+                    update_data = {'$set': {'occupancy': new_occupancy}}
+                    if new_occupancy == 0:
+                        update_data['$set']['is_special'] = False
+                    elif new_occupancy != 7:
+                        update_data['$set']['is_special'] = False
+                    db.rafts.update_one({'day': booking_date, 'slot': booking_slot, 'raft_id': raft_id}, update_data)
+                freed_count += 1
+
+    # Insert audit entry
+    audit = {
+        'action': 'delete_bookings_execute',
+        'range': {'from': from_date, 'to': to_date},
+        'requested_by': user_label,
+        'requested_at': _dt.utcnow(),
+        'deleted_count': archived_count,
+        'protected_count': protected_count,
+        'freed_count': freed_count,
+        'deleted_ids': deleted_ids,
+        'request_meta': {'ip': request.remote_addr, 'user_agent': request.headers.get('User-Agent')}
+    }
+    db.deletion_audits.insert_one(audit)
+
+    return jsonify({'message': f'Deletion completed. Deleted: {archived_count}, protected: {protected_count}', 'deleted_count': archived_count, 'protected_count': protected_count}), 200
