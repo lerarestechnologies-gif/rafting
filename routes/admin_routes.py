@@ -711,6 +711,187 @@ def occupancy_detail():
         # Return empty data instead of error to allow graceful fallback on frontend
         return jsonify({}), 200
 
+
+@admin_bp.route('/export_occupancy_pdf')
+@login_required
+@subadmin_or_admin_required
+def export_occupancy_pdf():
+    """Generate a PDF report for occupancy overview.
+    Supports admin range exports (from_date/to_date) and subadmin single-date exports (day).
+    Accepts optional `slot` and `status` query params (multi-value).
+    """
+    try:
+        import io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.lib.units import mm
+        import datetime as _dt
+    except Exception as imp_err:
+        print(f'[ERROR] PDF generation imports: {imp_err}')
+        return jsonify({'error': 'PDF generation not available on server (missing dependency)'}), 500
+
+    db = current_app.mongo.db
+    settings = load_settings(db)
+    slots = settings.get('time_slots', [])
+    rafts_per_slot = settings.get('rafts_per_slot', 5)
+    default_capacity = settings.get('capacity', 6)
+
+    # Determine allowed dates while respecting subadmin restrictions
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    qday = request.args.get('day')
+
+    allowed_dates = []
+    if current_user.is_subadmin():
+        # Sub-admin allowed only the viewed date; default to today if not provided
+        if not qday:
+            qday = _dt.date.today().isoformat()
+        try:
+            _dt.date.fromisoformat(qday)
+        except Exception:
+            qday = _dt.date.today().isoformat()
+        allowed_dates = [qday]
+    else:
+        # Admin: support range or single day
+        try:
+            if from_date and to_date:
+                fd = _dt.date.fromisoformat(from_date)
+                td = _dt.date.fromisoformat(to_date)
+                if fd > td:
+                    fd, td = td, fd
+                cur = fd
+                while cur <= td:
+                    allowed_dates.append(cur.isoformat())
+                    cur = cur + _dt.timedelta(days=1)
+            elif from_date:
+                _dt.date.fromisoformat(from_date)
+                allowed_dates = [from_date]
+            elif to_date:
+                _dt.date.fromisoformat(to_date)
+                allowed_dates = [to_date]
+            else:
+                day = qday or _dt.date.today().isoformat()
+                allowed_dates = [day]
+        except Exception:
+            # Fallback to today
+            allowed_dates = [_dt.date.today().isoformat()]
+
+    # Slot and status filters (slot restricts which slots are included in report)
+    filter_slot = request.args.getlist('slot') or []
+    filter_status = request.args.getlist('status') or []
+
+    # Build PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=18*mm, bottomMargin=22*mm)
+    styles = getSampleStyleSheet()
+    normal = styles['Normal']
+    elements = []
+
+    # Title
+    title_style = ParagraphStyle('title', parent=styles['Heading1'], alignment=1, fontSize=16)
+    elements.append(Paragraph('Occupancy Overview Report', title_style))
+    elements.append(Spacer(1, 6))
+
+    # Filters & timestamp
+    ts = _dt.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+    meta_lines = []
+    if len(allowed_dates) == 1:
+        meta_lines.append(f'Date: {allowed_dates[0]}')
+    else:
+        meta_lines.append(f'Date Range: {allowed_dates[0]} to {allowed_dates[-1]}')
+    if filter_status:
+        meta_lines.append('Status: ' + ', '.join(filter_status))
+    if filter_slot:
+        meta_lines.append('Slots: ' + ', '.join(filter_slot))
+    meta_lines.append(f'Exported: {ts}')
+
+    for line in meta_lines:
+        elements.append(Paragraph(line, normal))
+    elements.append(Spacer(1, 8))
+
+    # For each date, build table with columns: Time Slot | Occupied | Available | Occupancy %
+    from models.raft_model import ensure_rafts_for_date_slot
+
+    any_data = False
+    for date_str in allowed_dates:
+        # Ensure rafts exist for configured slots
+        for slot in slots:
+            ensure_rafts_for_date_slot(db, date_str, slot, rafts_per_slot, default_capacity)
+
+        # Decide which slots to include: either filter_slot or all configured slots
+        slot_list = filter_slot if filter_slot else slots
+
+        # Build rows
+        rows = []
+        for slot in slot_list:
+            # fetch rafts for this date and slot
+            rafts = list(db.rafts.find({'day': date_str, 'slot': slot}).sort('raft_id', 1).limit(rafts_per_slot))
+            if not rafts:
+                continue
+            slot_occupancy = sum(max(0, r.get('occupancy', 0)) for r in rafts)
+            slot_capacity = sum(default_capacity for _ in rafts)
+            available = slot_capacity - slot_occupancy
+            occupancy_pct = f"{(slot_occupancy / slot_capacity * 100):.1f}%" if slot_capacity > 0 else '0%'
+            rows.append([slot, str(slot_occupancy), str(available), occupancy_pct])
+
+        if not rows:
+            elements.append(Paragraph(f'No occupancy data available for {date_str}', normal))
+            elements.append(Spacer(1, 8))
+            continue
+
+        any_data = True
+        # Add section header per date
+        elements.append(Paragraph(f'Report Date: {date_str}', styles['Heading3']))
+        elements.append(Spacer(1, 4))
+
+        data_table = [['Time Slot', 'Occupied', 'Available', 'Occupancy %']] + rows
+        table = Table(data_table, colWidths=[90*mm, 25*mm, 25*mm, 30*mm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#428BCA')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN',(1,0),(-1,-1),'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 8))
+
+    if not any_data:
+        # No data for any requested date(s)
+        elements.append(Paragraph('No occupancy data available', normal))
+
+    # Footer: page numbers and export timestamp
+    def _add_page_number(canvas, doc):
+        canvas.saveState()
+        w, h = A4
+        page_num_text = f'Page {canvas.getPageNumber()}'
+        canvas.setFont('Helvetica', 8)
+        canvas.drawCentredString(w/2.0, 12*mm, page_num_text)
+        canvas.drawRightString(w - 18*mm, 12*mm, f'Exported: {ts}')
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_add_page_number, onLaterPages=_add_page_number)
+
+    pdf = buffer.getvalue()
+    buffer.close()
+
+    # Send response with appropriate headers
+    filename = f"Occupancy_Overview_{allowed_dates[0]}"
+    if len(allowed_dates) > 1:
+        filename = f"Occupancy_Overview_{allowed_dates[0]}_to_{allowed_dates[-1]}"
+    if filter_slot:
+        filename += '_' + '_'.join([s.replace(' ', '') for s in filter_slot])
+    filename += f"_{_dt.datetime.utcnow().date().isoformat()}.pdf"
+
+    from flask import Response
+    resp = Response(pdf, mimetype='application/pdf')
+    resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+    
+
 @admin_bp.route('/cancel_booking/<booking_id>', methods=['POST'])
 @login_required
 @admin_required  # Only admin, not subadmin

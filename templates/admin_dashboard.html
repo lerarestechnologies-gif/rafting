@@ -187,6 +187,7 @@
       <label for="occupancyDate" class="font-medium">Select date:</label>
       <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
       <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+      <button id="subadminExportBtn" onclick="exportSubadminOccupancyToPDF()" class="bg-blue-600 hover:bg-blue-700 text-white export-btn-compact rounded text-sm font-medium transition-colors flex items-center gap-2">📄 Export to PDF</button>
       <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
     </div>
     {% else %}
@@ -516,6 +517,76 @@ document.addEventListener('DOMContentLoaded', function() {
   setupDateFilter();
   {% endif %}
 });
+
+// Sub-admin export: call server-side PDF endpoint and download blob
+async function exportSubadminOccupancyToPDF() {
+  const dateVal = document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0,10);
+  const params = new URLSearchParams();
+  if (dateVal) params.append('day', dateVal);
+
+  // If slot/status filters exist in UI (they may not for subadmin), include them
+  const statusEl = document.getElementById('filterStatus');
+  if (statusEl) {
+    const selected = Array.from(statusEl.selectedOptions).map(o => o.value);
+    selected.forEach(s => params.append('status', s));
+  }
+  const slotEl = document.getElementById('filterSlot');
+  if (slotEl) {
+    const selected = Array.from(slotEl.selectedOptions).map(o => o.value);
+    selected.forEach(s => params.append('slot', s));
+  }
+
+  const url = '/admin/export_occupancy_pdf' + (params.toString() ? ('?' + params.toString()) : '');
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) {
+      // Try to parse JSON error first, fall back to text
+      let msg = res.statusText || 'Export failed';
+      try {
+        const json = await res.json();
+        if (json && json.error) msg = json.error;
+      } catch (e) {
+        try {
+          const text = await res.text();
+          if (text) msg = text;
+        } catch (ee) {
+          /* ignore */
+        }
+      }
+
+      // If server-side PDF generator is missing, fallback to client-side export
+      if (/missing dependency|not available on server/i.test(msg)) {
+        try {
+          // Inform user and fallback to client-side generation (jsPDF already included)
+          showToast('Server PDF unavailable — using client-side export as fallback', 'success');
+        } catch (e) {}
+        // Use the existing client-side exporter which builds occupancy PDF from the displayed data
+        try {
+          exportOccupancyOverviewToPDF();
+        } catch (err) {
+          alert('Fallback export failed: ' + (err.message || err));
+        }
+        return;
+      }
+
+      alert('Export failed: ' + msg);
+      return;
+    }
+    const blob = await res.blob();
+    const filename = res.headers.get('Content-Disposition')?.split('filename=')?.[1]?.replace(/\"/g,'') || `Occupancy_${dateVal}.pdf`;
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // cleanup object URL after a delay
+    setTimeout(() => window.URL.revokeObjectURL(link.href), 5000);
+  } catch (err) {
+    console.error('Export error', err);
+    alert('Export failed: ' + err.message);
+  }
+}
 
 // Date Filter Functions
 function setupDateFilter() {
