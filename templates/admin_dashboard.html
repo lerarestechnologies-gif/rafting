@@ -911,6 +911,27 @@ async function exportOccupancyOverviewToPDF() {
   // Determine a single date fallback (admin uses occupancyFrom/To, subadmin uses occupancyDate)
   const singleOcc = occFrom || occTo || document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0,10);
 
+  // Capture currently selected status/slot filters so exported filename and header reflect them
+  const filterStatus = document.getElementById('filterStatus')
+    ? Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)
+    : [];
+  const filterSlot = document.getElementById('filterSlot')
+    ? Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)
+    : [];
+
+  // Render selected filters at top of report
+  let headerY = 26;
+  if (filterStatus.length) {
+    doc.setFontSize(10);
+    doc.text(`Filters - Status: ${filterStatus.join(', ')}`, 14, headerY + 6);
+    headerY += 6;
+  }
+  if (filterSlot.length) {
+    doc.setFontSize(10);
+    doc.text(`Filters - Slot: ${filterSlot.join(', ')}`, 14, headerY + 6);
+    headerY += 6;
+  }
+
   // If a range is provided, export each date in the range
   if (occFrom && occTo) {
     // Small helper to iterate dates
@@ -928,38 +949,44 @@ async function exportOccupancyOverviewToPDF() {
     const dates = getDates(occFrom, occTo);
     doc.setFontSize(10);
     for (const d of dates) {
-      doc.text(`Report Date: ${d}`, 14, doc.lastAutoTable ? (doc.lastAutoTable.finalY + 10) : 27);
+      const yPos = doc.lastAutoTable ? (doc.lastAutoTable.finalY + 12) : (headerY + 8);
+      doc.text(`Report Date: ${d}`, 14, yPos);
       const data = await fetchOccupancy(d);
       const tableRows = buildRowsFromData(data);
       if (tableRows.length === 0) {
-        doc.text(`No occupancy data available for ${d}`, 14, doc.lastAutoTable ? (doc.lastAutoTable.finalY + 18) : 35);
+        const noDataY = doc.lastAutoTable ? (doc.lastAutoTable.finalY + 14) : (yPos + 8);
+        doc.text(`No occupancy data available for ${d}`, 14, noDataY);
         continue;
       }
       const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
       doc.autoTable({
         head: [tableColumn],
         body: tableRows,
-        startY: doc.lastAutoTable ? (doc.lastAutoTable.finalY + 12) : 32,
+        startY: doc.lastAutoTable ? (doc.lastAutoTable.finalY + 14) : (yPos + 8),
         styles: { fontSize: 9 },
         headStyles: { fillColor: [66, 139, 202] },
         alternateRowStyles: { fillColor: [245, 245, 245] },
-        margin: { top: 32 }
+        margin: { top: 32 },
+        theme: 'striped',
+        didDrawPage: function (data) {
+          // noop here; footer handled after table generation
+        }
       });
     }
   } else {
     // Single-date export (either admin single date or subadmin occupancyDate)
     const occupancyDate = singleOcc;
-    doc.text(`Report Date: ${occupancyDate}`, 14, 27);
+    doc.text(`Report Date: ${occupancyDate}`, 14, headerY + 2);
     const occupancyData = await fetchOccupancy(occupancyDate);
     const tableRows = buildRowsFromData(occupancyData);
     if (tableRows.length === 0) {
-      doc.text('No occupancy data available for this date', 14, 35);
+      doc.text('No occupancy data available for this date', 14, headerY + 12);
     } else {
       const tableColumn = ['Time Slot', 'Occupied', 'Available', 'Occupancy %'];
       doc.autoTable({
         head: [tableColumn],
         body: tableRows,
-        startY: 32,
+        startY: headerY + 12,
         styles: { fontSize: 9 },
         headStyles: { fillColor: [66, 139, 202] },
         alternateRowStyles: { fillColor: [245, 245, 245] },
@@ -981,17 +1008,17 @@ async function exportOccupancyOverviewToPDF() {
     );
   }
   
-  // Save PDF — build filename using range or single date
-  let filename;
+  // Save PDF — build filename using range or single date and current filters
+  let filenameBase;
   if (occFrom && occTo) {
-    filename = `Occupancy_Overview_${occFrom}_${occTo}_${now.toISOString().slice(0,10)}`;
+    filenameBase = `Occupancy_Overview_${occFrom}_${occTo}`;
   } else {
     const single = singleOcc;
-    filename = `Occupancy_Overview_${single}_${now.toISOString().slice(0,10)}`;
+    filenameBase = `Occupancy_Overview_${single}`;
   }
-  if (filterStatus && filterStatus.length) filename += `_status_${filterStatus.join('-')}`;
-  if (filterSlot && filterSlot.length) filename += `_slot_${filterSlot.map(s => s.replace(/\s+/g,'')).join('-')}`;
-  filename += '.pdf';
+  if (filterStatus && filterStatus.length) filenameBase += `_status_${filterStatus.join('-')}`;
+  if (filterSlot && filterSlot.length) filenameBase += `_slot_${filterSlot.map(s => s.replace(/\s+/g,'')).join('-')}`;
+  const filename = `${filenameBase}_${now.toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
 }
 
