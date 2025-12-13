@@ -6,6 +6,7 @@ from utils.booking_ops import cancel_booking, postpone_booking
 from utils.settings_manager import invalidate_settings_cache, refresh_settings_cache, regenerate_rafts_for_settings_change
 from models.booking_model import update_booking_status
 import datetime
+import re
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 def admin_required(f):
@@ -112,6 +113,35 @@ def dashboard():
     # Fetch bookings with filters
     bookings = list(db.bookings.find(query_filter).sort('created_at', -1).limit(500))
     
+
+    def format_phone_for_admin(phone):
+        if not phone:
+            return ""
+
+        # Extract digits only
+        digits = re.sub(r"\D", "", phone)
+
+        # Case 1: exactly 10 digits → assume Indian number
+        if len(digits) == 10:
+            return f"+91 {digits}"
+
+        # Case 2: starts with 91 and has 12 digits
+        if len(digits) == 12 and digits.startswith("91"):
+            return f"+91 {digits[2:]}"
+
+        # Case 3: already stored as +91XXXXXXXXXX
+        if phone.startswith("+91"):
+            return phone.replace("+91", "+91 ")
+
+        # Fallback: return original (just in case)
+        return phone
+
+
+    for booking in bookings:
+        booking["phone_display"] = format_phone_for_admin(
+            booking.get("phone", "")
+        )
+
     # For subadmin, don't pass filter parameters
     if current_user.is_subadmin():
         return render_template('admin_dashboard.html', 

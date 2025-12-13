@@ -110,7 +110,7 @@
         {% for b in bookings %}
         <tr class="text-center border-t">
           <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
-          <td class="border px-4 py-2">{{ b.phone | format_phone }}</td>
+          <td class="border px-4 py-2">{{ b.phone_display }}</td>
           <td class="border px-4 py-2">{{ b.email or "-" }}</td>
           <td class="border px-4 py-2">{{ b.date }}</td>
           <td class="border px-4 py-2">{{ b.slot }}</td>
@@ -134,7 +134,11 @@
           {% if not current_user.is_subadmin() %}
           <td class="border px-4 py-2">
             <button onclick="cancelBooking('{{ b._id }}')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
-            <button onclick="promptPostpone('{{ b._id }}')" class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
+            <button onclick="promptPostpone(event, '{{ b._id }}')" 
+                    class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">
+              Postpone
+            </button>
+
           </td>
           {% endif %}
         </tr>
@@ -314,8 +318,8 @@
   </div>
 
 <script>
-const defaultCapacity = {{ settings.capacity if settings and settings.capacity is defined else 6 }};
-const timeSlots = {{ (settings.time_slots if settings and settings.time_slots else ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30']) | tojson }};
+const defaultCapacity = {{ settings.capacity }};
+const timeSlots = {{ settings.time_slots | tojson }};
 
 // Parse the start time of a slot into minutes since midnight for sorting.
 function parseTimeSlotStart(slot) {
@@ -598,7 +602,9 @@ function showToast(message, type = 'success') {
 
 function showPostponeModal(id, currentDate, currentSlot) {
   const modal = document.createElement('div');
+  modal.id = 'postponeModal';
   modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
   modal.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
       <h3 class="text-xl font-bold mb-4">Postpone Booking</h3>
@@ -633,7 +639,12 @@ function showPostponeModal(id, currentDate, currentSlot) {
 }
 
 async function submitPostpone(id) {
-  const modal = document.querySelector('.fixed.bg-black');
+
+  const modal = document.getElementById('postponeModal');
+  if (!modal) {
+    showToast('Postpone dialog not found. Please retry.', 'error');
+    return;
+  }
   const newDate = document.getElementById('postponeDate').value;
   const newSlot = document.getElementById('postponeSlot').value;
   
@@ -669,16 +680,19 @@ async function submitPostpone(id) {
     
     // Refresh occupancy overview for both old and new dates
     const dateInp = document.getElementById('occupancyDate');
-    const currentViewDate = dateInp.value;
-    renderOccupancy(currentViewDate);
-    
-    // Also refresh if viewing a different date
-    if (currentViewDate !== newDate) {
-      setTimeout(() => {
-        dateInp.value = newDate;
-        renderOccupancy(newDate);
-      }, 500);
+
+    if (dateInp && dateInp.value) {
+      const currentViewDate = dateInp.value;
+      renderOccupancy(currentViewDate);
+
+      if (currentViewDate !== newDate) {
+        setTimeout(() => {
+          dateInp.value = newDate;
+          renderOccupancy(newDate);
+        }, 500);
+      }
     }
+
     
     // Reload the page after a short delay to show updated booking list
     setTimeout(() => {
@@ -689,18 +703,23 @@ async function submitPostpone(id) {
   }
 }
 
-async function promptPostpone(id) {
+function promptPostpone(e, id) {
   {% if current_user.is_subadmin() %}
   alert('Access denied. Sub-Admin cannot postpone bookings.');
   return;
   {% endif %}
+
   // Get current booking details from the table row
-  // Note: Column order is: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
-  const row = event.target.closest('tr');
+  // Column order: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
+  const row = e.target.closest('tr');
+  if (!row) return;
+
   const currentDate = row.querySelector('td:nth-child(4)').textContent.trim();
   const currentSlot = row.querySelector('td:nth-child(5)').textContent.trim();
+
   showPostponeModal(id, currentDate, currentSlot);
 }
+
 
 // Listen for settings updates from other tabs/windows
 window.addEventListener('storage', function(e) {
@@ -758,14 +777,19 @@ function exportAllBookingsToPDF() {
   const now = new Date();
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
 
-  const filterStatus = (document.getElementById('filterStatus') && Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)) || [];
-  const filterSlot = (document.getElementById('filterSlot') && Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)) || [];
-  
-  // Filter info if applicable (From / To range)
-  const filterFrom = document.getElementById('filterFrom')?.value;
-  const filterTo = document.getElementById('filterTo')?.value;
-  const filterStatus = (document.getElementById('filterStatus') && Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)) || [];
-  const filterSlot = (document.getElementById('filterSlot') && Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)) || [];
+ const filterFrom = document.getElementById('filterFrom')?.value || '';
+  const filterTo = document.getElementById('filterTo')?.value || '';
+
+  const filterStatus =
+    document.getElementById('filterStatus')
+      ? Array.from(document.getElementById('filterStatus').selectedOptions).map(o => o.value)
+      : [];
+
+  const filterSlot =
+    document.getElementById('filterSlot')
+      ? Array.from(document.getElementById('filterSlot').selectedOptions).map(o => o.value)
+      : [];
+
   if (filterFrom || filterTo) {
     const rangeText = `${filterFrom || ''}${filterFrom && filterTo ? ' - ' : ''}${filterTo || ''}`;
     doc.text(`Filtered by Date Range: ${rangeText}`, 14, 27);
@@ -813,12 +837,13 @@ function exportAllBookingsToPDF() {
     doc.autoTable({
       head: [tableColumn],
       body: tableRows,
-      startY: filterDate ? 32 : 27,
+      startY: (filterFrom || filterTo) ? 32 : 27,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [66, 139, 202] },
       alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { top: filterDate ? 32 : 27 }
+      margin: { top: (filterFrom || filterTo) ? 32 : 27 }
     });
+
   }
   
   // Footer

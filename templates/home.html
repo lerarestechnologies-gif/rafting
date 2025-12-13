@@ -150,34 +150,139 @@
   </section>
 
   <!-- Instructions Section -->
-  <section class="instructions-section text-center py-4" id="instructions">
-    <div class="container" style="max-width: 900px;">
-      <div class="instruction-box p-4 shadow-sm bg-light rounded-4">
-        <h3 class="fw-bold text-primary mb-3">🛶 Adventure Safety & Instructions</h3>
-        <p class="text-muted">
-          Welcome to <strong>Cherupuzha River Rafting!</strong> Before you begin your thrilling ride,
-          please read and follow these important instructions to ensure your safety and fun:
-        </p>
-        <ul class="text-start mx-auto mt-3" style="max-width: 700px;">
-          <li>✔️ Arrive at least 30-45 minutes before your scheduled rafting time to allow for check-in, gear fitting, safety briefing, and instructions. Late arrivals may result in missing the trip, and no refund will be issued.</li>
-          <li>✔️ Quick-dry clothes (synthetic fabrics like nylon or polyester, avoid cotton).</li>
-          <li>✔️ Leave jewelry, electronics, and other valuables in a safe place or with our staff.</li>
-          <li>✔️ Not recommended for individuals with heart conditions, back or neck problems, recent surgeries, or during pregnancy.</li>
-          <li>✔️ Participants must be between the ages of 10 and 60 years. Rafting is a physically demanding activity.</li>
-          <li>✔️ Do not consume alcohol or drugs before or during the rafting trip. It impairs judgment and puts the whole group at risk.</li>
-          <li>✔️ Operators reserve the right to deny participation if intoxication is suspected. No refund will be issued in such cases.</li>
-          <li>✔️ Always wear a life jacket, or personal flotation device (PFD) and helmet.</li>
-          <li>✔️ Person having heart problem Astma, Epilepsy or any other medical problem not allowed.</li>
-         
-        </ul>
-        <p class="text-secondary mt-3">
-          Your adventure begins here — stay safe, have fun, and make unforgettable memories!
-        </p>
-              <a href="{{ url_for('booking.book') }}" class="btn btn-primary btn-lg px-5 py-3">Start Booking</a>
+  <section class="instructions-section py-4" id="instructions">
+  <div class="container mx-auto px-4" style="max-width: 900px;">
+    <div class="instruction-box p-5 shadow-sm bg-light rounded-4">
 
+      <h3 class="fw-bold text-primary mb-3 text-center">
+        🛶 Adventure Safety & Instructions
+      </h3>
+
+      <p class="text-muted text-center mb-4">
+        Welcome to <strong>Cherupuzha River Rafting!</strong>
+        Before you begin your thrilling ride, please read and follow these important
+        instructions to ensure your safety and fun.
+      </p>
+
+      <ul class="mx-auto text-start list-none p-0" style="max-width:720px;">
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Arrive at least <strong>30–45 minutes</strong> before your scheduled rafting time
+            to allow for check-in, gear fitting, safety briefing, and instructions.
+            Late arrivals may miss the trip and <strong>no refund</strong> will be issued.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Wear <strong>quick-dry clothes</strong> (synthetic fabrics like nylon or polyester).
+            Avoid cotton.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Leave jewelry, electronics, and other valuables in a safe place or with our staff.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Not recommended for individuals with heart conditions, back or neck problems,
+            recent surgeries, or during pregnancy.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Participants must be between the ages of <strong>10 and 60 years</strong>.
+            Rafting is a physically demanding activity.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Do <strong>not</strong> consume alcohol or drugs before or during the rafting trip.
+            It impairs judgment and puts the entire group at risk.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Operators reserve the right to deny participation if intoxication is suspected.
+            No refund will be issued in such cases.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;">
+          <span style="color:#6b21a8;font-weight:600;">✓</span>
+          <span>
+            Always wear a <strong>life jacket (PFD)</strong> and helmet provided by the operators.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Persons with <strong>heart problems, asthma, epilepsy</strong>, or other serious
+            medical conditions are <strong>not allowed</strong> to participate.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Maximum raft capacity is <strong>7 people</strong>.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Groups with <strong>fewer than 6 people</strong> may be combined with other customers.
+          </span>
+        </li>
+
+        <li style="display:grid;grid-template-columns:24px 1fr;column-gap:12px;margin-bottom:12px;
+                   background:#fff6f6;border-left:4px solid #dc2626;padding:10px;border-radius:6px;">
+          <span style="color:#dc2626;font-weight:700;">✓</span>
+          <span>
+            Groups with <strong>more than 7 people</strong> will be split into
+            <strong>multiple rafts</strong>.
+          </span>
+        </li>
+
+      </ul>
+
+      <p class="text-center text-muted mt-4">
+        Your adventure begins here — stay safe, have fun, and make unforgettable memories!
+      </p>
+      <div class="text-center mt-3">
+        <a href="{{ url_for('booking.book') }}"
+          class="btn btn-primary btn-lg">
+          Start Booking
+        </a>
       </div>
+
+
     </div>
-  </section>
+  </div>
+</section>
+
+
 
   <!-- Location Section -->
   <section class="py-5 bg-light" id="location">
@@ -291,7 +396,7 @@
             <hr class="my-4 bg-light">
             
             <div class="text-center">
-                <p class="mb-0">&copy; 2023 Cherupuzha River Rafting. All rights reserved.</p>
+                <p class="mb-0">&copy; 2025 Cherupuzha River Rafting. All rights reserved.</p>
             </div>
         </div>
     </footer>

@@ -5,6 +5,7 @@ from utils.allocation_logic import allocate_raft, load_settings
 from utils.amount_calculator import calculate_total_amount
 from models.raft_model import ensure_rafts_for_date_slot
 from bson.objectid import ObjectId
+import re
 
 booking_bp = Blueprint('booking', __name__)
 
@@ -59,7 +60,17 @@ def book():
     if request.method == 'POST':
         name = request.form.get('name')
         email = request.form.get('email')
-        phone = request.form.get('phone')
+        phone = request.form.get("phone", "").strip()
+
+        # Validate: exactly 10 digits
+        if not re.fullmatch(r"\d{10}", phone):
+            flash("Please enter a valid 10-digit phone number.", "error")
+            return redirect(url_for("booking.book"))
+
+        # Attach country code
+        country_code = "+91"
+        full_phone = f"{country_code}{phone}"
+
         booking_date_str = request.form.get('booking_date')
         slot = request.form.get('slot')
         # validate booking date exists and is a proper future date
