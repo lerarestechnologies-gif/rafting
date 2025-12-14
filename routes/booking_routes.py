@@ -122,6 +122,22 @@ def book():
             return redirect(url_for('booking.book'))
         # Use the booking_date_str (YYYY-MM-DD) when interacting with raft helpers and DB
         ensure_rafts_for_date_slot(db, booking_date_str, slot, settings['rafts_per_slot'], settings['capacity'])
+        # Server-side slot-level availability check: ensure selected slot has capacity
+        try:
+            total_capacity_per_slot = settings.get('rafts_per_slot', 5) * settings.get('capacity', 6)
+            rafts = list(db.rafts.find({'day': booking_date_str, 'slot': slot}))
+            total_occupancy = sum(max(0, r.get('occupancy', 0)) for r in rafts)
+            available_for_slot = max(total_capacity_per_slot - total_occupancy, 0)
+            if available_for_slot <= 0:
+                flash('Selected time slot is fully booked for this date. Please choose a different slot.', 'error')
+                return redirect(url_for('booking.book'))
+            if group_size > available_for_slot:
+                flash(f'Only {available_for_slot} seats left in this slot. Please reduce group size or choose another slot.', 'error')
+                return redirect(url_for('booking.book'))
+        except Exception:
+            # if check fails for some reason, log and continue to allocation which will perform final checks
+            print('[WARN] slot availability check failed')
+
         result = allocate_raft(db, None, booking_date_str, slot, group_size)
         
         # Calculate amount for this booking
@@ -170,6 +186,42 @@ def availability():
         percent_full = round((total_occupancy / total_capacity) * 100, 2) if total_capacity>0 else 0
         data[slot] = {'available': available, 'percent_full': percent_full}
     return jsonify(data)
+
+
+@booking_bp.route('/slot_availability')
+def slot_availability():
+    """Return per-slot availability for a given date. Query param: day=YYYY-MM-DD"""
+    db = current_app.mongo.db
+    settings = get_settings(db)
+    rafts_per_slot = settings.get('rafts_per_slot', 5)
+    capacity_per_raft = settings.get('capacity', 6)
+    slots = settings.get('time_slots', [])
+
+    day = request.args.get('day')
+    if not day:
+        return jsonify({'error': 'day parameter required'}), 400
+
+    # Ensure date parsing
+    try:
+        _ = datetime.strptime(day, '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({'error': 'invalid date format, use YYYY-MM-DD'}), 400
+
+    total_capacity = rafts_per_slot * capacity_per_raft
+    result = {}
+    from models.raft_model import ensure_rafts_for_date_slot
+    for slot in slots:
+        try:
+            ensure_rafts_for_date_slot(db, day, slot, rafts_per_slot, capacity_per_raft)
+        except Exception:
+            pass
+        rafts = list(db.rafts.find({'day': day, 'slot': slot}))
+        total_occupancy = sum(max(0, r.get('occupancy', 0)) for r in rafts)
+        available = max(total_capacity - total_occupancy, 0)
+        percent_full = round((total_occupancy / total_capacity) * 100, 2) if total_capacity > 0 else 0
+        result[slot] = {'available': available, 'percent_full': percent_full, 'full': available <= 0}
+
+    return jsonify(result), 200
 
 
 @booking_bp.route('/fully_filled_dates')

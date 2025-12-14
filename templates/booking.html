@@ -107,7 +107,12 @@ document.addEventListener('DOMContentLoaded', function() {
           if (disabledDates.indexOf(dateStr) !== -1) {
             alert('Selected date is fully booked. Please choose another date.');
             instance.clear();
+            // reset slot availability to default
+            updateSlotAvailability(null);
+            return;
           }
+          // Fetch and update slot-level availability for the selected date
+          updateSlotAvailability(dateStr);
         }
       });
     } catch (err) {
@@ -124,5 +129,90 @@ document.addEventListener('DOMContentLoaded', function() {
   initDatepicker();
 });
 </script>
+
+<script>
+// Keep a map of slot availability for the selected date
+let slotAvailMap = {};
+
+async function updateSlotAvailability(day) {
+  const slotSelect = document.getElementById('slot-select');
+  const groupSizeInput = document.querySelector('input[name="group_size"]');
+  // Reset all options if no day provided
+  if (!slotSelect) return;
+  if (!day) {
+    // enable all options
+    Array.from(slotSelect.options).forEach(opt => {
+      opt.disabled = false;
+      opt.style.color = '';
+    });
+    if (groupSizeInput) {
+      // reset max to original calculated value (based on settings)
+      groupSizeInput.removeAttribute('max');
+    }
+    slotAvailMap = {};
+    return;
+  }
+
+  try {
+    const res = await fetch('/slot_availability?day=' + encodeURIComponent(day));
+    if (!res.ok) {
+      console.error('Failed to fetch slot availability');
+      return;
+    }
+    const json = await res.json();
+    slotAvailMap = json || {};
+
+    // Update slot options
+    Array.from(slotSelect.options).forEach(opt => {
+      const val = opt.value;
+      const info = slotAvailMap[val];
+      if (info && info.full) {
+        opt.disabled = true;
+        opt.style.color = '#9CA3AF';
+      } else {
+        opt.disabled = false;
+        opt.style.color = '';
+      }
+    });
+
+    // If current selection is disabled, pick first available
+    if (slotSelect.value) {
+      const curOpt = slotSelect.options[slotSelect.selectedIndex];
+      if (curOpt && curOpt.disabled) {
+        // choose first available
+        const avail = Array.from(slotSelect.options).find(o => !o.disabled);
+        if (avail) slotSelect.value = avail.value;
+        else slotSelect.value = '';
+      }
+    }
+
+    // Update group_size max to available seats for selected slot if possible
+    if (groupSizeInput && slotSelect.value) {
+      const selInfo = slotAvailMap[slotSelect.value];
+      if (selInfo) {
+        // allow up to available seats (but not exceed original templated max)
+        const avail = selInfo.available || 0;
+        if (avail > 0) {
+          groupSizeInput.max = avail;
+        } else {
+          groupSizeInput.max = 0;
+        }
+      }
+    }
+
+    // When slot changes, update group size max accordingly
+    slotSelect.addEventListener('change', function() {
+      if (!slotAvailMap) return;
+      const info = slotAvailMap[this.value];
+      if (groupSizeInput) {
+        if (info) groupSizeInput.max = info.available || 0;
+        else groupSizeInput.removeAttribute('max');
+      }
+    });
+
+  } catch (err) {
+    console.error('Error updating slot availability', err);
+  }
+}
 </script>
 {% endblock %}
