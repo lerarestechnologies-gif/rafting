@@ -87,6 +87,28 @@ def book():
             flash(f'Booking date must be between {min_date.isoformat()} and {max_date.isoformat()} (inclusive).', 'error')
             return redirect(url_for('booking.book'))
 
+        # Server-side: Check if the selected date is fully filled across all slots
+        try:
+            total_capacity_per_slot = settings.get('rafts_per_slot', 5) * settings.get('capacity', 6)
+            all_full = True
+            for s in settings.get('time_slots', []):
+                # ensure rafts exist
+                try:
+                    ensure_rafts_for_date_slot(db, booking_date_str, s, settings['rafts_per_slot'], settings['capacity'])
+                except Exception:
+                    pass
+                rafts = list(db.rafts.find({'day': booking_date_str, 'slot': s}))
+                total_occupancy = sum(max(0, r.get('occupancy', 0)) for r in rafts)
+                if total_occupancy < total_capacity_per_slot:
+                    all_full = False
+                    break
+            if all_full:
+                flash('Selected date is fully booked (all slots at capacity). Please choose another date.', 'error')
+                return redirect(url_for('booking.book'))
+        except Exception:
+            # On error, proceed (do not block) — but log
+            print('[WARN] could not determine fully-filled status')
+
         try:
             group_size = int(request.form.get('group_size'))
         except:
@@ -148,6 +170,61 @@ def availability():
         percent_full = round((total_occupancy / total_capacity) * 100, 2) if total_capacity>0 else 0
         data[slot] = {'available': available, 'percent_full': percent_full}
     return jsonify(data)
+
+
+@booking_bp.route('/fully_filled_dates')
+def fully_filled_dates():
+    """Return a JSON list of dates that are fully filled across all configured slots.
+    A date is fully filled when for every time slot, total occupancy >= (rafts_per_slot * capacity).
+    The API returns dates within the booking window (start_date..end_date).
+    """
+    db = current_app.mongo.db
+    settings = get_settings(db)
+    slots = settings.get('time_slots', [])
+    rafts_per_slot = settings.get('rafts_per_slot', 5)
+    capacity_per_raft = settings.get('capacity', 6)
+    # Determine booking window
+    today = date.today()
+    start_date_str = settings.get('start_date')
+    end_date_str = settings.get('end_date')
+    dates = []
+    try:
+        if start_date_str and end_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        else:
+            number_of_booking_days = settings.get('days', 30)
+            start_date = today
+            end_date = today + timedelta(days=number_of_booking_days)
+    except Exception:
+        number_of_booking_days = settings.get('days', 30)
+        start_date = today
+        end_date = today + timedelta(days=number_of_booking_days)
+
+    # iterate through window
+    cur = max(start_date, today)
+    fully = []
+    total_capacity_per_slot = rafts_per_slot * capacity_per_raft
+    while cur <= end_date:
+        date_str = cur.isoformat()
+        all_slots_full = True
+        for slot in slots:
+            # ensure rafts exist for this date/slot (best-effort)
+            try:
+                from models.raft_model import ensure_rafts_for_date_slot
+                ensure_rafts_for_date_slot(db, date_str, slot, rafts_per_slot, capacity_per_raft)
+            except Exception:
+                pass
+            rafts = list(db.rafts.find({'day': date_str, 'slot': slot}))
+            total_occupancy = sum(max(0, r.get('occupancy', 0)) for r in rafts)
+            if total_occupancy < total_capacity_per_slot:
+                all_slots_full = False
+                break
+        if all_slots_full:
+            fully.append(date_str)
+        cur = cur + timedelta(days=1)
+
+    return jsonify({'fully_filled': fully}), 200
 
 @booking_bp.route('/track-booking', methods=['GET','POST'])
 def track_booking():

@@ -32,7 +32,7 @@
         Enter your whatsapp number.
       </p>
 
-  <input id="booking_date" name="booking_date" type="date" class="border p-2 w-full mb-2" min="{{ min_date }}" max="{{ max_date }}" required>
+  <input id="booking_date" name="booking_date" type="text" class="border p-2 w-full mb-2" placeholder="Select a date" required autocomplete="off" />
   <small class="text-muted">Select a date between {{ min_date }} and {{ max_date }} (inclusive)</small>
     <label class="block mb-1">Slot</label>
     <select name="slot" id="slot-select" class="border p-2 w-full mb-2" required>
@@ -53,5 +53,76 @@ window.addEventListener('storage', function(e) {
     window.location.reload();
   }
 });
+
+// Use Flatpickr to get per-day disable support and better UX
+</script>
+
+<!-- Flatpickr CSS/JS (CDN). If offline, flatpickr will fail gracefully and native input will be used. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+  /* Grey out disabled dates and show not-allowed cursor */
+  .flatpickr-day.flatpickr-disabled {
+    color: #9CA3AF !important; /* gray-400 */
+    cursor: not-allowed !important;
+    text-decoration: line-through;
+    opacity: 0.65;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const dateInput = document.getElementById('booking_date');
+  const noticeEl = document.getElementById('unavailableDatesNotice');
+
+  // Config from server-side template
+  const minDate = '{{ min_date }}';
+  const maxDate = '{{ max_date }}';
+
+  // Fetch unavailable dates from backend, then initialize flatpickr
+  async function initDatepicker() {
+    let disabledDates = [];
+    try {
+      const res = await fetch('/fully_filled_dates');
+      if (res.ok) {
+        const json = await res.json();
+        disabledDates = (json.fully_filled || []).slice();
+      }
+    } catch (err) {
+      console.error('Failed to fetch fully filled dates', err);
+    }
+
+    // Initialize flatpickr on the input
+    try {
+      flatpickr(dateInput, {
+        dateFormat: 'Y-m-d',
+        minDate: minDate,
+        maxDate: maxDate,
+        disable: disabledDates,
+        disableMobile: true,
+        // prevent selection via keyboard for disabled dates
+        onChange: function(selectedDates, dateStr, instance) {
+          if (!dateStr) return;
+          // If selected date is in disabledDates, clear and warn (extra safety)
+          if (disabledDates.indexOf(dateStr) !== -1) {
+            alert('Selected date is fully booked. Please choose another date.');
+            instance.clear();
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Flatpickr init failed, falling back to native date input', err);
+      // Fallback: set min/max attributes on native input
+      try {
+        dateInput.setAttribute('type', 'date');
+        dateInput.setAttribute('min', minDate);
+        dateInput.setAttribute('max', maxDate);
+      } catch (e) {}
+    }
+  }
+
+  initDatepicker();
+});
+</script>
 </script>
 {% endblock %}
