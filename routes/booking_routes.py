@@ -5,6 +5,7 @@ from utils.allocation_logic import allocate_raft, load_settings
 from utils.amount_calculator import calculate_total_amount
 from models.raft_model import ensure_rafts_for_date_slot
 from bson.objectid import ObjectId
+from datetime import timedelta as _timedelta
 
 booking_bp = Blueprint('booking', __name__)
 
@@ -88,6 +89,36 @@ def book():
             flash(f'Invalid group size. Maximum allowed is {max_people_per_slot} people per slot.', 'error')
             return redirect(url_for('booking.book'))
         # Use the booking_date_str (YYYY-MM-DD) when interacting with raft helpers and DB
+        # Server-side validation: reject if entire date is fully booked
+        def is_date_fully_booked(db, date_str, settings):
+            slots = settings.get('time_slots', [])
+            rafts_per_slot = settings.get('rafts_per_slot', 5)
+            capacity = settings.get('capacity', 6)
+            from models.raft_model import ensure_rafts_for_date_slot as _ensure
+            for s in slots:
+                # ensure rafts present
+                _ensure(db, date_str, s, rafts_per_slot, capacity)
+                rafts = list(db.rafts.find({'day': date_str, 'slot': s}).sort('raft_id', 1).limit(rafts_per_slot))
+                # compute vacancy using allocation rules (must match allocation logic)
+                total_vacancy = 0
+                for r in rafts:
+                    occupancy = r.get('occupancy', 0)
+                    is_special = r.get('is_special', False)
+                    if occupancy == 0:
+                        total_vacancy += capacity + 1
+                    elif is_special:
+                        total_vacancy += 0
+                    else:
+                        total_vacancy += max(capacity - occupancy, 0)
+                # if any slot has vacancy, date is NOT fully booked
+                if total_vacancy > 0:
+                    return False
+            return True
+
+        if is_date_fully_booked(db, booking_date_str, settings):
+            flash('Selected date is fully booked', 'error')
+            return redirect(url_for('booking.book'))
+
         ensure_rafts_for_date_slot(db, booking_date_str, slot, settings['rafts_per_slot'], settings['capacity'])
         result = allocate_raft(db, None, booking_date_str, slot, group_size)
         
@@ -137,6 +168,65 @@ def availability():
         percent_full = round((total_occupancy / total_capacity) * 100, 2) if total_capacity>0 else 0
         data[slot] = {'available': available, 'percent_full': percent_full}
     return jsonify(data)
+
+
+@booking_bp.route('/fully_booked_dates')
+def fully_booked_dates():
+    """Return a list of dates (ISO YYYY-MM-DD) within the booking window that are fully booked (all slots at 100%)."""
+    db = current_app.mongo.db
+    settings = get_settings(db)
+    slots = settings.get('time_slots', [])
+    rafts_per_slot = settings.get('rafts_per_slot', 5)
+    capacity = settings.get('capacity', 6)
+
+    # Determine date window (same logic as book view)
+    today = date.today()
+    start_date_str = settings.get('start_date')
+    end_date_str = settings.get('end_date')
+    if start_date_str and end_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            start_date = today
+            end_date = today + _timedelta(days=settings.get('days', 30))
+    else:
+        start_date = today
+        end_date = today + _timedelta(days=settings.get('days', 30))
+
+    # Helper matching allocation vacancy logic
+    def date_fully_booked(db, date_str):
+        from models.raft_model import ensure_rafts_for_date_slot as _ensure
+        for s in slots:
+            _ensure(db, date_str, s, rafts_per_slot, capacity)
+            rafts = list(db.rafts.find({'day': date_str, 'slot': s}).sort('raft_id', 1).limit(rafts_per_slot))
+            total_vacancy = 0
+            for r in rafts:
+                occupancy = r.get('occupancy', 0)
+                is_special = r.get('is_special', False)
+                if occupancy == 0:
+                    total_vacancy += capacity + 1
+                elif is_special:
+                    total_vacancy += 0
+                else:
+                    total_vacancy += max(capacity - occupancy, 0)
+            if total_vacancy > 0:
+                return False
+        return True
+
+    fully = []
+    cur = start_date
+    while cur <= end_date:
+        ds = cur.isoformat()
+        try:
+            if date_fully_booked(db, ds):
+                fully.append(ds)
+        except Exception:
+            # ignore errors for a single day and continue
+            pass
+        cur = cur + _timedelta(days=1)
+
+    return jsonify({'fully_booked_dates': fully})
 
 @booking_bp.route('/track-booking', methods=['GET','POST'])
 def track_booking():

@@ -27,40 +27,47 @@
         </button>
         {% endif %}
       </div>
-      {% if not current_user.is_subadmin() %}
-      <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <!-- Filter Type (Daily/Weekly/Monthly) -->
-        <div class="flex items-center gap-2">
-          <label for="filterType" class="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
-          <select id="filterType" 
-                  class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-            <option value="">All</option>
-            <option value="daily" {% if filter_type == 'daily' %}selected{% endif %}>Daily</option>
-            <option value="weekly" {% if filter_type == 'weekly' %}selected{% endif %}>Weekly</option>
-            <option value="monthly" {% if filter_type == 'monthly' %}selected{% endif %}>Monthly</option>
-          </select>
+        {% if not current_user.is_subadmin() %}
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+          <!-- From date -->
+          <div style="display:flex; align-items:center; gap:8px; min-width:180px;">
+            <label for="fromDate" class="text-sm font-medium text-gray-700">From:</label>
+            <input type="date" id="fromDate" name="fromDate" value="{{ filter_from|default('') }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+          </div>
+          <!-- To date -->
+          <div style="display:flex; align-items:center; gap:8px; min-width:180px;">
+            <label for="toDate" class="text-sm font-medium text-gray-700">To:</label>
+            <input type="date" id="toDate" name="toDate" value="{{ filter_to|default('') }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+          </div>
+          <!-- Slot filter -->
+          <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
+            <label for="slotFilter" class="text-sm font-medium text-gray-700">Slot:</label>
+            <select id="slotFilter" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+              <option value="">All Slots</option>
+              {% for s in (settings.time_slots if settings and settings.time_slots else ['7:00–9:00','10:00–12:00','13:00–15:00','15:30–17:30']) %}
+              <option value="{{ s }}" {% if filter_slot == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <!-- Status filter -->
+          <div style="display:flex; align-items:center; gap:8px; min-width:180px;">
+            <label for="statusFilter" class="text-sm font-medium text-gray-700">Status:</label>
+            <select id="statusFilter" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+              <option value="">All</option>
+              <option value="Confirmed" {% if filter_status == 'Confirmed' %}selected{% endif %}>Confirmed</option>
+              <option value="Pending" {% if filter_status == 'Pending' %}selected{% endif %}>Pending</option>
+              <option value="Cancelled" {% if filter_status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+            </select>
+          </div>
+          <!-- force break so buttons sit below -->
+          <div style="flex-basis:100%; height:0;"></div>
+          <!-- Buttons below filters -->
+          <div style="width:100%; display:flex; justify-content:flex-end; gap:8px;">
+            <button onclick="applyFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm">Apply</button>
+            <button onclick="clearFilters()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm">Clear</button>
+          </div>
         </div>
-        <!-- Date Filter (for Daily) -->
-        <div class="flex items-center gap-2">
-          <label for="filterDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Date:</label>
-          <input type="date" 
-                 id="filterDate" 
-                 name="filterDate"
-                 value="{{ selected_date }}"
-                 class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          <button onclick="applyDateFilter()" 
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
-            Apply
-          </button>
-          {% if selected_date or filter_type %}
-          <button onclick="clearDateFilter()" 
-                  class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm font-medium transition-colors">
-            Clear
-          </button>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
+        {% endif %}
     </div>
     
     <!-- Booking Count -->
@@ -81,6 +88,7 @@
           <th class="px-4 py-2 border">Phone Number</th>
           <th class="px-4 py-2 border">Email</th>
           <th class="px-4 py-2 border">Date</th>
+          <th class="px-4 py-2 border">Booked On</th>
           <th class="px-4 py-2 border">Slot</th>
           <th class="px-4 py-2 border">Group Size</th>
           <th class="px-4 py-2 border">Rafts</th>
@@ -97,6 +105,7 @@
           <td class="border px-4 py-2">{{ b.phone | format_phone }}</td>
           <td class="border px-4 py-2">{{ b.email or "-" }}</td>
           <td class="border px-4 py-2">{{ b.date }}</td>
+          <td class="border px-4 py-2">{{ b.created_at_ist }}</td>
           <td class="border px-4 py-2">{{ b.slot }}</td>
           <td class="border px-4 py-2">{{ b.group_size }}</td>
           <td class="border px-4 py-2">
@@ -118,7 +127,7 @@
           {% if not current_user.is_subadmin() %}
           <td class="border px-4 py-2">
             <button onclick="cancelBooking('{{ b._id }}')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
-            <button onclick="promptPostpone('{{ b._id }}')" class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
+            <button onclick="promptPostpone(event, '{{ b._id }}')" class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
           </td>
           {% endif %}
         </tr>
@@ -135,7 +144,7 @@
             No confirmed bookings for today or tomorrow.
           {% elif selected_date %}
             Try adjusting your date filter or 
-            <button onclick="clearDateFilter()" class="text-blue-600 hover:underline">clear the filter</button> to see all bookings.
+            <button onclick="clearFilters()" class="text-blue-600 hover:underline">clear the filter</button> to see all bookings.
           {% else %}
             There are no bookings in the system yet.
           {% endif %}
@@ -161,69 +170,17 @@
       </button>
       {% endif %}
     </div>
-    {% if current_user.is_subadmin() %}
-    <!-- Sub-Admin: Single date picker only -->
+    <!-- Occupancy Overview: From / To date range (Admin and Sub-Admin) -->
     <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyDate" class="font-medium">Select date:</label>
-      <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
+      <label for="occupancyFrom" class="font-medium">From:</label>
+      <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
+      <label for="occupancyTo" class="font-medium">To:</label>
+      <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
+      <button id="occupancyApply" class="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
+      <button id="occupancyClear" class="bg-gray-200 text-gray-800 px-3 py-1 rounded">Clear</button>
       <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
       <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
     </div>
-    {% else %}
-    <!-- Admin: Filter type and date picker -->
-    <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyFilterType" class="font-medium">Filter:</label>
-      <select id="occupancyFilterType" 
-              class="border px-2 py-1 rounded">
-        <option value="">All</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="monthly">Monthly</option>
-      </select>
-    </div>
-    <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyDate" class="font-medium">Select date:</label>
-      <input type="date" id="occupancyDate" class="border px-2 py-1 rounded" />
-      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
-      <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
-    </div>
-    {% endif %}
-    {% if not current_user.is_subadmin() %}
-    <script>
-    // Handle occupancy filter type change (Admin only)
-    document.addEventListener('DOMContentLoaded', function() {
-      const occupancyFilterType = document.getElementById('occupancyFilterType');
-      if (occupancyFilterType) {
-        occupancyFilterType.addEventListener('change', function() {
-          const filterType = this.value;
-          const dateInp = document.getElementById('occupancyDate');
-          const today = new Date();
-          
-          if (filterType === 'daily') {
-            dateInp.value = today.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else if (filterType === 'weekly') {
-            // Get start of week (Monday)
-            const daysSinceMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
-            const weekStart = new Date(today);
-            weekStart.setDate(today.getDate() - daysSinceMonday);
-            dateInp.value = weekStart.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else if (filterType === 'monthly') {
-            // Get start of month
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            dateInp.value = monthStart.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          } else {
-            // All - show today
-            dateInp.value = today.toISOString().slice(0, 10);
-            renderOccupancy(dateInp.value);
-          }
-        });
-      }
-    });
-    </script>
-    {% endif %}
     <div id="occupancyDetail" class="grid gap-4"></div>
     <div class="mt-3 text-sm text-gray-600">
       <span class="inline-block w-4 h-4 bg-green-500 rounded mr-1 align-middle"></span> Available
@@ -234,6 +191,7 @@
 
 <script>
 const defaultCapacity = {{ settings.capacity if settings and settings.capacity is defined else 6 }};
+const raftsPerSlot = {{ settings.rafts_per_slot if settings and settings.rafts_per_slot is defined else 5 }};
 const timeSlots = {{ (settings.time_slots if settings and settings.time_slots else ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30']) | tojson }};
 
 // Parse the start time of a slot into minutes since midnight for sorting.
@@ -258,13 +216,20 @@ function parseTimeSlotStart(slot) {
   return hh * 60 + mm;
 }
 
-async function fetchOccupancy(day) {
+async function fetchOccupancy(from, to) {
   let url = '/admin/occupancy_detail';
-  // Both Admin and Sub-Admin: Use day parameter
-  if (day) url += '?day=' + day;
+  const params = new URLSearchParams();
+  if (from) params.append('from', from);
+  if (to) params.append('to', to);
+  if (params.toString()) url += '?' + params.toString();
   const res = await fetch(url);
   if (!res.ok) {
-    console.error('Occupancy fetch failed', res.status);
+    try {
+      const err = await res.json();
+      console.error('Occupancy fetch failed', err);
+    } catch (e) {
+      console.error('Occupancy fetch failed', res.status);
+    }
     return {};
   }
   return await res.json();
@@ -291,86 +256,76 @@ function makeRaftSquare(raft) {
   return span;
 }
 
-async function renderOccupancy(day) {
-  const data = await fetchOccupancy(day);
+async function renderOccupancy(from, to) {
+  const data = await fetchOccupancy(from, to);
   const container = document.getElementById('occupancyDetail');
   container.innerHTML = '';
-  
-  // Clear any existing data first
+
   if (!data || Object.keys(data).length === 0) {
-    container.innerHTML = '<p class="text-gray-500 text-center py-4">No occupancy data available for this date.</p>';
+    container.innerHTML = '<p class="text-gray-500 text-center py-4">No occupancy data available for the selected range.</p>';
     const lastUpdatedEl = document.getElementById('lastUpdated');
-    if (lastUpdatedEl) {
-      lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-    }
+    if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
     return;
   }
-  
-  // Both Admin and Sub-Admin: Data is grouped by slot (single date)
-  // Use configured `timeSlots` order first, then append any unknown slots.
-  const slotOrder = [];
-  for (const s of timeSlots) {
-    if (Object.prototype.hasOwnProperty.call(data, s)) slotOrder.push(s);
-  }
-  const others = Object.keys(data).filter(s => !timeSlots.includes(s));
-  others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
-  slotOrder.push(...others);
 
-  for (const slot of slotOrder) {
-    const rafts = data[slot];
-    if (!Array.isArray(rafts) || rafts.length === 0) {
-      continue;
-    }
-    
-    const slotCard = document.createElement('div');
-    slotCard.className = 'p-3 border rounded';
-    const header = document.createElement('div');
-    header.innerHTML = `<strong>${slot}</strong>`;
-    slotCard.appendChild(header);
-    const raftRow = document.createElement('div');
-    raftRow.className = 'mt-2';
-    
-    // Process and validate raft data
-    const validRafts = rafts.map(r => {
-      // Clamp occupancy to >= 0 to prevent negative values
-      const occupancy = Math.max(0, r.occupancy || 0);
-      const raftCapacity = r.capacity || 6;
-      // Only show special if occupancy > 0
-      const isSpecial = (r.is_special && occupancy > 0);
-      
-      return {
-        ...r,
-        occupancy: occupancy,
-        capacity: raftCapacity,
-        is_special: isSpecial
-      };
-    });
-    
-    for (const r of validRafts) {
-      const sq = makeRaftSquare(r);
-      raftRow.appendChild(sq);
-    }
-    slotCard.appendChild(raftRow);
-    
-    // detailed list below for click/hover clarity
-    const details = document.createElement('div');
-    details.className = 'mt-2 text-sm text-gray-700';
-    details.innerHTML = validRafts.map(r => {
-      // Ensure occupancy is non-negative
-      const occupancy = Math.max(0, r.occupancy || 0);
-      // Only show special tag if occupancy > 0 and is_special is true
-      const specialTag = (r.is_special && occupancy > 0) ? ' (7-special)' : '';
-      return `Raft ${r.raft_id}: ${occupancy}/${r.capacity}${specialTag}`;
-    }).join('<br/>');
-    slotCard.appendChild(details);
+  // Data is grouped by date -> slot -> raft_list
+  const dates = Object.keys(data).sort();
+  for (const dateStr of dates) {
+    const dateHeader = document.createElement('h3');
+    dateHeader.className = 'text-md font-semibold mt-2 mb-2';
+    dateHeader.textContent = dateStr;
+    container.appendChild(dateHeader);
 
-    container.appendChild(slotCard);
+    // Determine slot order for this date
+    const slotsForDate = Object.keys(data[dateStr] || {});
+    const slotOrder = [];
+    for (const s of timeSlots) if (slotsForDate.includes(s)) slotOrder.push(s);
+    const others = slotsForDate.filter(s => !timeSlots.includes(s));
+    others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+    slotOrder.push(...others);
+
+    for (const slot of slotOrder) {
+      const rafts = data[dateStr][slot];
+      if (!Array.isArray(rafts) || rafts.length === 0) continue;
+
+      // Calculate slot-level aggregates
+      const bookedCount = rafts.reduce((acc, r) => acc + Math.max(0, r.occupancy || 0), 0);
+      const totalCapacity = (raftsPerSlot || rafts.length) * (rafts[0].capacity || defaultCapacity);
+      const available = Math.max(0, totalCapacity - bookedCount);
+      const percent = totalCapacity > 0 ? Math.round((bookedCount / totalCapacity) * 100) : 0;
+
+      const slotCard = document.createElement('div');
+      slotCard.className = 'p-3 border rounded';
+      const header = document.createElement('div');
+      header.innerHTML = `<strong>${slot}</strong> — ${bookedCount}/${totalCapacity} booked — ${available} available — ${percent}%`;
+      slotCard.appendChild(header);
+
+      const raftRow = document.createElement('div');
+      raftRow.className = 'mt-2';
+
+      // Render raft squares (maintain color coding)
+      for (const r of rafts) {
+        const safeR = { ...r, occupancy: Math.max(0, r.occupancy || 0), capacity: r.capacity || defaultCapacity };
+        const sq = makeRaftSquare(safeR);
+        raftRow.appendChild(sq);
+      }
+      slotCard.appendChild(raftRow);
+
+      const details = document.createElement('div');
+      details.className = 'mt-2 text-sm text-gray-700';
+      details.innerHTML = rafts.map(r => {
+        const occupancy = Math.max(0, r.occupancy || 0);
+        const specialTag = (r.is_special && occupancy > 0) ? ' (7-special)' : '';
+        return `Raft ${r.raft_id}: ${occupancy}/${r.capacity}${specialTag}`;
+      }).join('<br/>');
+      slotCard.appendChild(details);
+
+      container.appendChild(slotCard);
+    }
   }
-  
+
   const lastUpdatedEl = document.getElementById('lastUpdated');
-  if (lastUpdatedEl) {
-    lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-  }
+  if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -379,36 +334,53 @@ document.addEventListener('DOMContentLoaded', function() {
     timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
   }
   
-  const dateInp = document.getElementById('occupancyDate');
-  if (dateInp) {
-    // Default to today for both Admin and Sub-Admin
+  const fromInp = document.getElementById('occupancyFrom');
+  const toInp = document.getElementById('occupancyTo');
+  if (fromInp && toInp) {
     const today = new Date().toISOString().slice(0,10);
-    dateInp.value = today;
-    renderOccupancy(today);
-    
-    // Refresh every 10 seconds
+    // Default to today when both are empty
+    fromInp.value = today;
+    toInp.value = today;
+    renderOccupancy(fromInp.value, toInp.value);
+
+    // Refresh every 10 seconds for the current range
     setInterval(() => {
-      const currentDate = dateInp.value || today;
-      renderOccupancy(currentDate);
+      const currentFrom = fromInp.value || today;
+      const currentTo = toInp.value || today;
+      renderOccupancy(currentFrom, currentTo);
     }, 10000);
-    
-    // Handle date change
-    dateInp.addEventListener('change', function() {
-      if (this.value) {
-        renderOccupancy(this.value);
-      }
-    });
-    
+
+    // Handle Apply button
+    const applyBtn = document.getElementById('occupancyApply');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        const f = fromInp.value;
+        const t = toInp.value;
+        if (f && t && new Date(f) > new Date(t)) {
+          alert('From Date cannot be greater than To Date');
+          return;
+        }
+        renderOccupancy(f || today, t || today);
+      });
+    }
+
+    // Handle Clear button
+    const clearBtn = document.getElementById('occupancyClear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        fromInp.value = today;
+        toInp.value = today;
+        renderOccupancy(today, today);
+      });
+    }
+
     // Handle refresh button
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
-        // Clear container before refreshing
         const container = document.getElementById('occupancyDetail');
-        if (container) {
-          container.innerHTML = '';
-        }
-        renderOccupancy(dateInp.value || today);
+        if (container) container.innerHTML = '';
+        renderOccupancy(fromInp.value || today, toInp.value || today);
       });
     }
   }
@@ -431,33 +403,40 @@ function setupDateFilter() {
   //   });
   // }
 }
-
-function applyDateFilter() {
-  const filterDate = document.getElementById('filterDate').value;
-  const filterType = document.getElementById('filterType').value;
-  
-  // Build query parameters
+function applyFilters() {
   const params = new URLSearchParams();
-  
-  if (filterType) {
-    params.append('filter_type', filterType);
+  const from = document.getElementById('fromDate')?.value;
+  const to = document.getElementById('toDate')?.value;
+  const slot = document.getElementById('slotFilter')?.value;
+  const status = document.getElementById('statusFilter')?.value;
+
+  if (from) params.append('from', from);
+  if (to) params.append('to', to);
+  if (slot) params.append('slot', slot);
+  if (status) params.append('status', status);
+
+  if (from && to) {
+    const f = new Date(from);
+    const t = new Date(to);
+    if (f > t) {
+      alert('From Date cannot be greater than To Date');
+      return;
+    }
   }
-  
-  if (filterDate) {
-    params.append('date', filterDate);
-  }
-  
-  // Navigate to filtered view
+
   const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
   window.location.href = url;
 }
 
-function clearDateFilter() {
-  // Clear date input and filter type
-  document.getElementById('filterDate').value = '';
-  document.getElementById('filterType').value = '';
-  
-  // Navigate to dashboard without filters
+function clearFilters() {
+  const fromEl = document.getElementById('fromDate');
+  const toEl = document.getElementById('toDate');
+  const slotEl = document.getElementById('slotFilter');
+  const statusEl = document.getElementById('statusFilter');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  if (slotEl) slotEl.value = '';
+  if (statusEl) statusEl.value = '';
   window.location.href = '/admin/dashboard';
 }
 </script>
@@ -477,9 +456,10 @@ async function cancelBooking(id) {
     alert(data.message || data.error || "Cancelled");
     
     // Refresh occupancy overview if it's displayed
-    const occupancyDate = document.getElementById('occupancyDate');
-    if (occupancyDate) {
-      renderOccupancy(occupancyDate.value);
+    const fromEl = document.getElementById('occupancyFrom');
+    const toEl = document.getElementById('occupancyTo');
+    if (fromEl && toEl) {
+      renderOccupancy(fromEl.value, toEl.value);
     }
     
     location.reload();
@@ -574,18 +554,24 @@ async function submitPostpone(id) {
     showToast(data.message || 'Booking postponed successfully', 'success');
     
     // Refresh occupancy overview for both old and new dates
-    const dateInp = document.getElementById('occupancyDate');
-    const currentViewDate = dateInp.value;
-    renderOccupancy(currentViewDate);
-    
-    // Also refresh if viewing a different date
-    if (currentViewDate !== newDate) {
+    const fromEl = document.getElementById('occupancyFrom');
+    const toEl = document.getElementById('occupancyTo');
+    const today = new Date().toISOString().slice(0,10);
+    const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
+    const currentTo = (toEl && toEl.value) ? toEl.value : today;
+    renderOccupancy(currentFrom, currentTo);
+
+    // Also refresh single-day view for newDate briefly so admin sees update
+    if (newDate && (newDate < currentFrom || newDate > currentTo)) {
       setTimeout(() => {
-        dateInp.value = newDate;
-        renderOccupancy(newDate);
+        if (fromEl && toEl) {
+          fromEl.value = newDate;
+          toEl.value = newDate;
+        }
+        renderOccupancy(newDate, newDate);
       }, 500);
     }
-    
+
     // Reload the page after a short delay to show updated booking list
     setTimeout(() => {
       location.reload();
@@ -595,16 +581,25 @@ async function submitPostpone(id) {
   }
 }
 
-async function promptPostpone(id) {
+async function promptPostpone(event, id) {
   {% if current_user.is_subadmin() %}
   alert('Access denied. Sub-Admin cannot postpone bookings.');
   return;
   {% endif %}
   // Get current booking details from the table row
   // Note: Column order is: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
-  const row = event.target.closest('tr');
-  const currentDate = row.querySelector('td:nth-child(4)').textContent.trim();
-  const currentSlot = row.querySelector('td:nth-child(5)').textContent.trim();
+  const row = (event && event.target) ? event.target.closest('tr') : null;
+  // Fallback: try to find row by booking id if event is not available
+  let currentRow = row;
+  if (!currentRow) {
+    currentRow = document.querySelector(`tr[data-booking-id="${id}"]`);
+  }
+  if (!currentRow) {
+    showToast('Unable to determine booking row for postpone action.', 'error');
+    return;
+  }
+  const currentDate = currentRow.querySelector('td:nth-child(4)')?.textContent.trim() || '';
+  const currentSlot = currentRow.querySelector('td:nth-child(5)')?.textContent.trim() || '';
   showPostponeModal(id, currentDate, currentSlot);
 }
 
@@ -620,32 +615,35 @@ window.addEventListener('storage', function(e) {
     try {
       const deletedInfo = JSON.parse(e.newValue || '{}');
       const deletedDate = deletedInfo.date;
-      const occupancyDate = document.getElementById('occupancyDate');
-      
-      if (occupancyDate) {
-        // Clear and re-fetch occupancy data
-        const container = document.getElementById('occupancyDetail');
-        if (container) {
-          container.innerHTML = '';
+      const fromEl = document.getElementById('occupancyFrom');
+      const toEl = document.getElementById('occupancyTo');
+      const today = new Date().toISOString().slice(0,10);
+
+      const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
+      const currentTo = (toEl && toEl.value) ? toEl.value : today;
+
+      // Clear and re-fetch occupancy data container
+      const container = document.getElementById('occupancyDetail');
+      if (container) container.innerHTML = '';
+
+      if (deletedDate) {
+        // If deletedDate falls in current range, refresh
+        if (deletedDate >= currentFrom && deletedDate <= currentTo) {
+          renderOccupancy(currentFrom, currentTo);
         }
-        // If the deleted date matches the currently viewed date, refresh
-        if (deletedDate && occupancyDate.value === deletedDate) {
-          renderOccupancy(deletedDate);
-        } else if (!deletedDate) {
-          // If no specific date, refresh current view
-          renderOccupancy(occupancyDate.value);
-        }
+      } else {
+        // No specific date provided, refresh current view
+        renderOccupancy(currentFrom, currentTo);
       }
     } catch (err) {
-      // Fallback: just refresh current view
-      const occupancyDate = document.getElementById('occupancyDate');
-      if (occupancyDate) {
-        const container = document.getElementById('occupancyDetail');
-        if (container) {
-          container.innerHTML = '';
-        }
-        renderOccupancy(occupancyDate.value);
-      }
+      const fromEl = document.getElementById('occupancyFrom');
+      const toEl = document.getElementById('occupancyTo');
+      const today = new Date().toISOString().slice(0,10);
+      const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
+      const currentTo = (toEl && toEl.value) ? toEl.value : today;
+      const container = document.getElementById('occupancyDetail');
+      if (container) container.innerHTML = '';
+      renderOccupancy(currentFrom, currentTo);
     }
   }
 });
@@ -665,9 +663,18 @@ function exportAllBookingsToPDF() {
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
   
   // Filter info if applicable
-  const filterDate = document.getElementById('filterDate')?.value;
-  if (filterDate) {
-    doc.text(`Filtered by Date: ${filterDate}`, 14, 27);
+  const from = document.getElementById('fromDate')?.value;
+  const to = document.getElementById('toDate')?.value;
+  const slot = document.getElementById('slotFilter')?.value;
+  const status = document.getElementById('statusFilter')?.value;
+  let filterInfo = [];
+  if (from || to) {
+    filterInfo.push(`Date: ${from || ''}${from && to ? ' to ' + to : ''}`);
+  }
+  if (slot) filterInfo.push(`Slot: ${slot}`);
+  if (status) filterInfo.push(`Status: ${status}`);
+  if (filterInfo.length) {
+    doc.text(`Filtered by ${filterInfo.join(' | ')}`, 14, 27);
   }
   
   // Table columns
@@ -704,11 +711,11 @@ function exportAllBookingsToPDF() {
     doc.autoTable({
       head: [tableColumn],
       body: tableRows,
-      startY: filterDate ? 32 : 27,
+      startY: filterInfo.length ? 32 : 27,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [66, 139, 202] },
       alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { top: filterDate ? 32 : 27 }
+      margin: { top: filterInfo.length ? 32 : 27 }
     });
   }
   
@@ -726,8 +733,8 @@ function exportAllBookingsToPDF() {
   }
   
   // Save PDF
-  const filename = filterDate 
-    ? `All_Bookings_${filterDate}_${now.toISOString().slice(0,10)}.pdf`
+  const filename = (from || to || slot || status)
+    ? `All_Bookings_${(from || '')}${to ? '_to_' + to : ''}_${now.toISOString().slice(0,10)}.pdf`
     : `All_Bookings_${now.toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
 }
@@ -735,12 +742,12 @@ function exportAllBookingsToPDF() {
 async function exportOccupancyOverviewToPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  
-  // Get current date from occupancy date picker
-  const occupancyDate = document.getElementById('occupancyDate')?.value || new Date().toISOString().slice(0, 10);
-  
-  // Fetch occupancy data
-  const occupancyData = await fetchOccupancy(occupancyDate);
+  // Get current from/to from occupancy pickers
+  const from = document.getElementById('occupancyFrom')?.value || new Date().toISOString().slice(0, 10);
+  const to = document.getElementById('occupancyTo')?.value || from;
+
+  // Fetch occupancy data for the range
+  const occupancyData = await fetchOccupancy(from, to);
   
   // Title
   doc.setFontSize(18);
@@ -750,7 +757,7 @@ async function exportOccupancyOverviewToPDF() {
   doc.setFontSize(10);
   const now = new Date();
   doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
-  doc.text(`Report Date: ${occupancyDate}`, 14, 27);
+  doc.text(`Report Range: ${from} to ${to}`, 14, 27);
   
   // Process occupancy data
   const tableRows = [];
@@ -759,21 +766,24 @@ async function exportOccupancyOverviewToPDF() {
   let totalCapacity = 0;
   
   if (occupancyData && Object.keys(occupancyData).length > 0) {
-    for (const [slot, rafts] of Object.entries(occupancyData)) {
-      if (Array.isArray(rafts) && rafts.length > 0) {
+    // occupancyData is grouped by date -> slot -> rafts
+    for (const [dateStr, slots] of Object.entries(occupancyData)) {
+      for (const [slot, rafts] of Object.entries(slots || {})) {
+        if (!Array.isArray(rafts) || rafts.length === 0) continue;
         const slotRafts = rafts.length;
         const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
         const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
         const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
-        
+
         tableRows.push([
+          dateStr,
           slot,
           slotRafts.toString(),
           slotOccupancy.toString(),
           (slotCapacity - slotOccupancy).toString(),
           `${occupancyPercent}%`
         ]);
-        
+
         totalRafts += slotRafts;
         totalOccupancy += slotOccupancy;
         totalCapacity += slotCapacity;
@@ -795,7 +805,7 @@ async function exportOccupancyOverviewToPDF() {
     doc.text('No occupancy data available for this date', 14, 35);
   } else {
     // Table columns
-    const tableColumn = ['Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
+    const tableColumn = ['Date', 'Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
     
     // Add table
     doc.autoTable({
@@ -830,18 +840,18 @@ async function exportOccupancyOverviewToPDF() {
     yPos += 8;
     
     doc.setFontSize(9);
-    for (const [slot, rafts] of Object.entries(occupancyData)) {
-      if (Array.isArray(rafts) && rafts.length > 0) {
+    // Detailed info grouped by date then slot
+    for (const [dateStr, slots] of Object.entries(occupancyData)) {
+      for (const [slot, rafts] of Object.entries(slots || {})) {
+        if (!Array.isArray(rafts) || rafts.length === 0) continue;
         if (yPos > doc.internal.pageSize.getHeight() - 40) {
           doc.addPage();
           yPos = 20;
         }
-        
         doc.setFontSize(10);
-        doc.text(`${slot}:`, 14, yPos);
+        doc.text(`${dateStr} — ${slot}:`, 14, yPos);
         yPos += 6;
         doc.setFontSize(8);
-        
         rafts.forEach(raft => {
           if (yPos > doc.internal.pageSize.getHeight() - 20) {
             doc.addPage();
@@ -876,7 +886,7 @@ async function exportOccupancyOverviewToPDF() {
   }
   
   // Save PDF
-  const filename = `Occupancy_Overview_${occupancyDate}_${now.toISOString().slice(0,10)}.pdf`;
+  const filename = `Occupancy_Overview_${from}_to_${to}_${now.toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
 }
 

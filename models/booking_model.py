@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from bson.objectid import ObjectId
 
 def create_booking(db, name, email, phone, date, slot, group_size, status='Pending', raft_allocations=None, amount_per_person=0, total_amount=0):
     if raft_allocations is None:
         raft_allocations = []
+    now_utc = datetime.now(timezone.utc)
+
     booking = {
         'user_name': name,
         'email': email,
@@ -15,7 +17,10 @@ def create_booking(db, name, email, phone, date, slot, group_size, status='Pendi
         'status': status,
         'amount_per_person': float(amount_per_person),
         'total_amount': float(total_amount),
-        'created_at': datetime.utcnow()
+
+        # ✅ TIMESTAMPS (ADMIN NEEDS THIS)
+        'created_at': now_utc,
+        'updated_at': now_utc
     }
     res = db.bookings.insert_one(booking)
     return str(res.inserted_id)

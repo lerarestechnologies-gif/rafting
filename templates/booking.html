@@ -5,8 +5,40 @@
   <form method="POST">
     <input name="name" placeholder="Full name" class="border p-2 w-full mb-2" required>
     <input name="email" placeholder="Email" type="email" class="border p-2 w-full mb-2" required>
-    <input name="phone" placeholder="Phone" class="border p-2 w-full mb-2" required>
-  <input id="booking_date" name="booking_date" type="date" class="border p-2 w-full mb-2" min="{{ min_date }}" max="{{ max_date }}" required>
+    <label class="block mb-1 font-medium">Phone Number</label>
+
+      <div class="flex mb-2">
+        <!-- Country code -->
+        <span class="inline-flex items-center px-3 border border-r-0 rounded-l bg-gray-100 text-gray-700">
+          +91
+        </span>
+
+        <!-- Phone input -->
+        <input
+          type="tel"
+          name="phone"
+          placeholder="10-digit whatsapp number"
+          class="border border-l-0 rounded-r p-2 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+          pattern="[0-9]{10}"
+          minlength="10"
+          maxlength="10"
+          inputmode="numeric"
+          required
+          title="Please enter a valid 10-digit phone number"
+        >
+      </div>
+
+      <p class="text-sm text-gray-500 mb-2">
+        Enter your whatsapp number.
+      </p>
+
+    <div class="relative mb-2">
+      <input id="booking_date" name="booking_date" type="text" class="border p-2 w-full pr-10" placeholder="Select a date" required autocomplete="off" />
+      <button type="button" id="booking_date_btn" aria-label="Open calendar" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600">
+        <!-- simple calendar icon -->
+        📅
+      </button>
+    </div>
   <small class="text-muted">Select a date between {{ min_date }} and {{ max_date }} (inclusive)</small>
     <label class="block mb-1">Slot</label>
     <select name="slot" id="slot-select" class="border p-2 w-full mb-2" required>
@@ -27,5 +59,172 @@ window.addEventListener('storage', function(e) {
     window.location.reload();
   }
 });
+
+// Use Flatpickr to get per-day disable support and better UX
+</script>
+
+<!-- Flatpickr CSS/JS (CDN). If offline, flatpickr will fail gracefully and native input will be used. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+  /* Grey out disabled dates and show not-allowed cursor */
+  .flatpickr-day.flatpickr-disabled {
+    color: #9CA3AF !important; /* gray-400 */
+    cursor: not-allowed !important;
+    text-decoration: line-through;
+    opacity: 0.65;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const dateInput = document.getElementById('booking_date');
+    // const noticeEl = document.getElementById('unavailableDatesNotice');
+
+  // Config from server-side template
+  const minDate = '{{ min_date }}';
+  const maxDate = '{{ max_date }}';
+
+  // Fetch unavailable dates from backend, then initialize flatpickr
+  async function initDatepicker() {
+    let disabledDates = [];
+    try {
+      const res = await fetch('/fully_filled_dates');
+      if (res.ok) {
+        const json = await res.json();
+        disabledDates = (json.fully_filled || []).slice();
+      }
+    } catch (err) {
+      console.error('Failed to fetch fully filled dates', err);
+    }
+
+    // Initialize flatpickr on the input
+    try {
+      const fp = flatpickr(dateInput, {
+        // Use altInput to show dd-mm-yyyy while keeping ISO value for form submission
+        altInput: true,
+        altFormat: 'd-m-Y',
+        dateFormat: 'Y-m-d',
+        allowInput: false,
+        minDate: minDate,
+        maxDate: maxDate,
+        disable: disabledDates,
+        disableMobile: true,
+        // when date changes, update slot availability
+        onChange: function(selectedDates, dateStr, instance) {
+          if (!dateStr) return;
+          if (disabledDates.indexOf(dateStr) !== -1) {
+            alert('Selected date is fully booked. Please choose another date.');
+            instance.clear();
+            updateSlotAvailability(null);
+            return;
+          }
+          updateSlotAvailability(dateStr);
+        }
+      });
+      // Wire calendar button to open the picker
+      const calBtn = document.getElementById('booking_date_btn');
+      if (calBtn) {
+        calBtn.addEventListener('click', function() { fp.open(); });
+      }
+    } catch (err) {
+      console.error('Flatpickr init failed, falling back to native date input', err);
+      // Fallback: set min/max attributes on native input
+      try {
+        dateInput.setAttribute('type', 'date');
+        dateInput.setAttribute('min', minDate);
+        dateInput.setAttribute('max', maxDate);
+      } catch (e) {}
+    }
+  }
+
+  initDatepicker();
+});
+</script>
+
+<script>
+// Keep a map of slot availability for the selected date
+let slotAvailMap = {};
+
+async function updateSlotAvailability(day) {
+  const slotSelect = document.getElementById('slot-select');
+  const groupSizeInput = document.querySelector('input[name="group_size"]');
+  // Reset all options if no day provided
+  if (!slotSelect) return;
+  if (!day) {
+    // enable all options
+    Array.from(slotSelect.options).forEach(opt => {
+      opt.disabled = false;
+      opt.style.color = '';
+    });
+    if (groupSizeInput) {
+      // reset max to original calculated value (based on settings)
+      groupSizeInput.removeAttribute('max');
+    }
+    slotAvailMap = {};
+    return;
+  }
+
+  try {
+    const res = await fetch('/slot_availability?day=' + encodeURIComponent(day));
+    if (!res.ok) {
+      console.error('Failed to fetch slot availability');
+      return;
+    }
+    const json = await res.json();
+    slotAvailMap = json || {};
+
+    // Update slot options
+    Array.from(slotSelect.options).forEach(opt => {
+      const val = opt.value;
+      const info = slotAvailMap[val];
+      if (info && info.full) {
+        opt.disabled = true;
+        opt.style.color = '#9CA3AF';
+      } else {
+        opt.disabled = false;
+        opt.style.color = '';
+      }
+    });
+
+    // If current selection is disabled, pick first available
+    if (slotSelect.value) {
+      const curOpt = slotSelect.options[slotSelect.selectedIndex];
+      if (curOpt && curOpt.disabled) {
+        // choose first available
+        const avail = Array.from(slotSelect.options).find(o => !o.disabled);
+        if (avail) slotSelect.value = avail.value;
+        else slotSelect.value = '';
+      }
+    }
+
+    // Update group_size max to available seats for selected slot if possible
+    if (groupSizeInput && slotSelect.value) {
+      const selInfo = slotAvailMap[slotSelect.value];
+      if (selInfo) {
+        // allow up to available seats (but not exceed original templated max)
+        const avail = selInfo.available || 0;
+        if (avail > 0) {
+          groupSizeInput.max = avail;
+        } else {
+          groupSizeInput.max = 0;
+        }
+      }
+    }
+
+    // When slot changes, update group size max accordingly
+    slotSelect.addEventListener('change', function() {
+      if (!slotAvailMap) return;
+      const info = slotAvailMap[this.value];
+      if (groupSizeInput) {
+        if (info) groupSizeInput.max = info.available || 0;
+        else groupSizeInput.removeAttribute('max');
+      }
+    });
+
+  } catch (err) {
+    console.error('Error updating slot availability', err);
+  }
+}
 </script>
 {% endblock %}
