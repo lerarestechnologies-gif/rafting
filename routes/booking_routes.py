@@ -170,6 +170,47 @@ def availability():
     return jsonify(data)
 
 
+@booking_bp.route('/slot_availability')
+def slot_availability():
+    """Return availability info for a specific day. Query param: day=YYYY-MM-DD
+    Response: { slot1: { available: N, full: bool }, slot2: {...} }
+    """
+    db = current_app.mongo.db
+    settings = get_settings(db)
+    slots = settings.get('time_slots', [])
+    rafts_per_slot = settings.get('rafts_per_slot', 5)
+    capacity = settings.get('capacity', 6)
+
+    day = request.args.get('day')
+    if not day:
+        return jsonify({}), 400
+
+    res = {}
+    from models.raft_model import ensure_rafts_for_date_slot as _ensure
+    try:
+        for s in slots:
+            # ensure rafts exist for this date/slot
+            _ensure(db, day, s, rafts_per_slot, capacity)
+            rafts = list(db.rafts.find({'day': day, 'slot': s}).sort('raft_id', 1).limit(rafts_per_slot))
+            # compute available seats using same allocation rules
+            total_capacity = 0
+            total_occupancy = 0
+            for r in rafts:
+                r_capacity = r.get('capacity', capacity)
+                total_capacity += r_capacity
+                total_occupancy += max(0, r.get('occupancy', 0))
+            # Note: special raft handling in allocation may allow +1 seat for empty rafts; approximate available
+            available = max(total_capacity - total_occupancy, 0)
+            res[s] = {
+                'available': available,
+                'full': available <= 0
+            }
+    except Exception:
+        return jsonify({}), 500
+
+    return jsonify(res)
+
+
 @booking_bp.route('/fully_booked_dates')
 def fully_booked_dates():
     """Return a list of dates (ISO YYYY-MM-DD) within the booking window that are fully booked (all slots at 100%)."""

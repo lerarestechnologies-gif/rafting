@@ -89,10 +89,10 @@ document.addEventListener('DOMContentLoaded', function() {
   async function initDatepicker() {
     let disabledDates = [];
     try {
-      const res = await fetch('/fully_filled_dates');
+      const res = await fetch('/fully_booked_dates');
       if (res.ok) {
         const json = await res.json();
-        disabledDates = (json.fully_filled || []).slice();
+        disabledDates = (json.fully_booked_dates || []).slice();
       }
     } catch (err) {
       console.error('Failed to fetch fully filled dates', err);
@@ -165,7 +165,7 @@ async function updateSlotAvailability(day) {
     return;
   }
 
-  try {
+    try {
     const res = await fetch('/slot_availability?day=' + encodeURIComponent(day));
     if (!res.ok) {
       console.error('Failed to fetch slot availability');
