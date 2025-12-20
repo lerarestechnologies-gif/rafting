@@ -171,15 +171,21 @@
       {% endif %}
     </div>
     <!-- Occupancy Overview: From / To date range (Admin and Sub-Admin) -->
-    <div class="flex items-center gap-3 mb-3">
-      <label for="occupancyFrom" class="font-medium">From:</label>
-      <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
-      <label for="occupancyTo" class="font-medium">To:</label>
-      <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
-      <button id="occupancyApply" class="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
-      <button id="occupancyClear" class="bg-gray-200 text-gray-800 px-3 py-1 rounded">Clear</button>
-      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
-      <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;" class="mb-3">
+      <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
+        <label for="occupancyFrom" class="font-medium">From:</label>
+        <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
+        <label for="occupancyTo" class="font-medium">To:</label>
+        <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-grow:1; justify-content:flex-end; min-width:220px;">
+        <button id="occupancyApply" class="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
+        <button id="occupancyClear" class="bg-gray-200 text-gray-800 px-3 py-1 rounded">Clear</button>
+        <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+        <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
+      </div>
     </div>
     <div id="occupancyDetail" class="grid gap-4"></div>
     <div class="mt-3 text-sm text-gray-600">
