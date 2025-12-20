@@ -683,8 +683,8 @@ function exportAllBookingsToPDF() {
     doc.text(`Filtered by ${filterInfo.join(' | ')}`, 14, 27);
   }
   
-  // Table columns
-  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Rafts', 'Status'];
+  // Table columns (removed 'Rafts' column for PDF export)
+  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Status'];
   
   // Get booking data from table
   const tableBody = document.querySelector('table tbody');
@@ -694,16 +694,17 @@ function exportAllBookingsToPDF() {
     const rows = tableBody.querySelectorAll('tr');
     rows.forEach(row => {
       const cells = row.querySelectorAll('td');
-      if (cells.length >= 8) {
+      // Table columns in the page are: Name, Phone, Email, Date, Booked On, Slot, Group Size, Rafts, Status, (Actions)
+      // We want to export: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status
+      if (cells.length >= 9) {
         const rowData = [
-          cells[0].textContent.trim() || 'Unknown',
-          cells[1].textContent.trim() || '-',
-          cells[2].textContent.trim() || '-',
-          cells[3].textContent.trim() || '-',
-          cells[4].textContent.trim() || '-',
-          cells[5].textContent.trim() || '-',
-          cells[6].textContent.trim() || '-',
-          cells[7].textContent.trim() || '-'
+          cells[0].textContent.trim() || 'Unknown', // Name
+          cells[1].textContent.trim() || '-',       // Phone
+          cells[2].textContent.trim() || '-',       // Email
+          cells[3].textContent.trim() || '-',       // Date
+          cells[5].textContent.trim() || '-',       // Slot (cell 5)
+          cells[6].textContent.trim() || '-',       // Group Size (cell 6)
+          cells[8].textContent.trim() || '-'        // Status (cell 8)
         ];
         tableRows.push(rowData);
       }
@@ -771,10 +772,19 @@ async function exportOccupancyOverviewToPDF() {
   let totalOccupancy = 0;
   let totalCapacity = 0;
   
-  if (occupancyData && Object.keys(occupancyData).length > 0) {
+    if (occupancyData && Object.keys(occupancyData).length > 0) {
     // occupancyData is grouped by date -> slot -> rafts
     for (const [dateStr, slots] of Object.entries(occupancyData)) {
-      for (const [slot, rafts] of Object.entries(slots || {})) {
+      // Determine slot order: prefer configured `timeSlots`, then sort remaining by parsed start time
+      const slotsKeys = Object.keys(slots || {});
+      const slotOrder = [];
+      for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
+      const others = slotsKeys.filter(s => !timeSlots.includes(s));
+      others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+      slotOrder.push(...others);
+
+      for (const slot of slotOrder) {
+        const rafts = slots[slot];
         if (!Array.isArray(rafts) || rafts.length === 0) continue;
         const slotRafts = rafts.length;
         const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
@@ -846,9 +856,17 @@ async function exportOccupancyOverviewToPDF() {
     yPos += 8;
     
     doc.setFontSize(9);
-    // Detailed info grouped by date then slot
+    // Detailed info grouped by date then slot (slot order matches summary)
     for (const [dateStr, slots] of Object.entries(occupancyData)) {
-      for (const [slot, rafts] of Object.entries(slots || {})) {
+      const slotsKeys = Object.keys(slots || {});
+      const slotOrder = [];
+      for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
+      const others = slotsKeys.filter(s => !timeSlots.includes(s));
+      others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+      slotOrder.push(...others);
+
+      for (const slot of slotOrder) {
+        const rafts = slots[slot];
         if (!Array.isArray(rafts) || rafts.length === 0) continue;
         if (yPos > doc.internal.pageSize.getHeight() - 40) {
           doc.addPage();
