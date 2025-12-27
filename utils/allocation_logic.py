@@ -11,7 +11,7 @@ def load_settings(db):
         settings = {
             'rafts_per_slot': 5,
             'capacity': 6,
-            'time_slots': ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30'],
+            'time_slots': [], # No hardcoded defaults; must be set by admin
             'start_date': today.isoformat(),
             'end_date': default_end.isoformat(),
             'days': 30

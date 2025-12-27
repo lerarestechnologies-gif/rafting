@@ -6,8 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import MONGO_URI as mongo_uri
 client = MongoClient(mongo_uri)
 db = client.get_database("raft_booking")
-admin_email = "admin123@gmail.com"
-admin_password = "admin123"
+admin_email = os.environ.get("ADMIN_EMAIL", "admin123@gmail.com")
+admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
 hashed_pw = generate_password_hash(admin_password)
 existing = db.users.find_one({"email": admin_email})
 if existing:

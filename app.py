@@ -50,11 +50,16 @@ def create_app():
     def format_phone(phone):
         if not phone:
             return '-'
+        # Keep only digits
         digits = ''.join(filter(str.isdigit, str(phone)))
+        
+        # If 10 digits (common in India), format as +91 XXXXX XXXXX
         if len(digits) == 10:
-            return f"({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
-        elif len(digits) == 11 and digits[0] == '1':
-            return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:11]}"
+            return f"+91 {digits[0:5]} {digits[5:10]}"
+        elif len(digits) == 12 and digits.startswith('91'):
+             return f"+{digits[0:2]} {digits[2:7]} {digits[7:12]}"
+        
+        # fallback
         return phone
 
     # user loader
@@ -86,4 +91,5 @@ app = create_app()
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000)

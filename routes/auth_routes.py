@@ -22,31 +22,31 @@ def login():
         user = User(user_doc)
         
         # Debug: Check what we have
-        print(f"[DEBUG] Login attempt for email: {email}")
-        print(f"[DEBUG] User found: {user.email}, Role: {user.role}")
-        print(f"[DEBUG] Has password_hash: {bool(user.password_hash)}")
+        # print(f"[DEBUG] Login attempt for email: {email}")
+        # print(f"[DEBUG] User found: {user.email}, Role: {user.role}")
+        # print(f"[DEBUG] Has password_hash: {bool(user.password_hash)}")
         
         # Check password first
         password_valid = user.check_password(password)
-        print(f"[DEBUG] Password valid: {password_valid}")
+        # print(f"[DEBUG] Password valid: {password_valid}")
         
         # Check role - allow both admin and subadmin
         role_valid = user.is_admin_or_subadmin()
-        print(f"[DEBUG] Role valid (admin or subadmin): {role_valid}")
-        print(f"[DEBUG] User role details: is_admin={user.is_admin()}, is_subadmin={user.is_subadmin()}")
+        # print(f"[DEBUG] Role valid (admin or subadmin): {role_valid}")
+        # print(f"[DEBUG] User role details: is_admin={user.is_admin()}, is_subadmin={user.is_subadmin()}")
         
         if password_valid and role_valid:
             try:
                 login_user(user, remember=True)
                 flash('Logged in successfully', 'success')
-                print(f"[DEBUG] User {email} logged in successfully with role: {user.role}")
+                # print(f"[DEBUG] User {email} logged in successfully with role: {user.role}")
                 next_page = request.args.get('next')
                 # Redirect both admin and subadmin to dashboard
                 return redirect(next_page or url_for('admin.dashboard'))
             except Exception as e:
-                print(f"[ERROR] Login failed: {str(e)}")
-                import traceback
-                traceback.print_exc()
+                current_app.logger.error(f"[ERROR] Login failed: {str(e)}")
+                # import traceback
+                # traceback.print_exc()
                 flash('Login failed. Please try again.', 'error')
                 return redirect(url_for('auth.login'))
         else:
