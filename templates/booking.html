@@ -7,60 +7,66 @@
     <input name="email" placeholder="Email" type="email" class="border p-2 w-full mb-2" required>
     <label class="block mb-1 font-medium">Phone Number</label>
 
-      <div class="flex mb-2">
-        <!-- Country code -->
-        <span class="inline-flex items-center px-3 border border-r-0 rounded-l bg-gray-100 text-gray-700">
-          +91
-        </span>
+    <div class="flex mb-2">
+      <!-- Country code -->
+      <span class="inline-flex items-center px-3 border border-r-0 rounded-l bg-gray-100 text-gray-700">
+        +91
+      </span>
 
-        <!-- Phone input -->
-        <input
-          type="tel"
-          name="phone"
-          placeholder="10-digit whatsapp number"
-          class="border border-l-0 rounded-r p-2 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
-          pattern="[0-9]{10}"
-          minlength="10"
-          maxlength="10"
-          inputmode="numeric"
-          required
-          title="Please enter a valid 10-digit phone number"
-        >
-      </div>
+      <!-- Phone input -->
+      <input type="tel" name="phone" placeholder="10-digit whatsapp number"
+        class="border border-l-0 rounded-r p-2 w-full focus:outline-none focus:ring-2 focus:ring-teal-500"
+        pattern="[0-9]{10}" minlength="10" maxlength="10" inputmode="numeric" required
+        title="Please enter a valid 10-digit phone number">
+    </div>
 
-      <p class="text-sm text-gray-500 mb-2">
-        Enter your whatsapp number.
-      </p>
+    <p class="text-sm text-gray-500 mb-2">
+      Enter your whatsapp number.
+    </p>
+
+    <div class="mb-4 bg-blue-50 p-4 rounded text-sm text-gray-800">
+      <h3 class="font-bold mb-2">Instructions:</h3>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>If the group size is below 4 and the accompanying group cancels, your booking may also be cancelled, as a
+          minimum of 4 participants is required in a raft for weight balance and safety.</li>
+        <li>This is a rain-dependent activity. Water levels may vary. We will notify you one day in advance.</li>
+        <li>Cancellation or postponement is allowed in such rain/water level cases, and a refund will be issued.</li>
+      </ul>
+    </div>
 
     <div class="relative mb-2">
-      <input id="booking_date" name="booking_date" type="text" class="border p-2 w-full pr-10" placeholder="Select a date" required autocomplete="off" />
-      <button type="button" id="booking_date_btn" aria-label="Open calendar" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600">
+      <input id="booking_date" name="booking_date" type="text" class="border p-2 w-full pr-10"
+        placeholder="Select a date" required autocomplete="off" />
+      <button type="button" id="booking_date_btn" aria-label="Open calendar"
+        class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600">
         <!-- simple calendar icon -->
         📅
       </button>
     </div>
-  <small class="text-muted">Select a date between {{ min_date }} and {{ max_date }} (inclusive)</small>
+    <small class="text-muted">Select a date between {{ min_date }} and {{ max_date }} (inclusive)</small>
     <label class="block mb-1">Slot</label>
     <select name="slot" id="slot-select" class="border p-2 w-full mb-2" required>
       {% for s in settings.time_slots %}
       <option value="{{ s }}">{{ s }}</option>
       {% endfor %}
     </select>
-    <input name="group_size" type="number" min="1" max="{{ (settings.rafts_per_slot if settings and settings.rafts_per_slot else 5) * ((settings.capacity if settings and settings.capacity else 6) + 1) }}" class="border p-2 w-full mb-2" placeholder="Group size" required>
+    <input name="group_size" type="number" min="1"
+      max="{{ (settings.rafts_per_slot if settings and settings.rafts_per_slot else 5) * ((settings.capacity if settings and settings.capacity else 6) + 1) }}"
+      class="border p-2 w-full mb-2" placeholder="Group size" required>
     <div class="text-center"><button class="bg-teal-600 text-white px-4 py-2 rounded">Confirm Booking</button></div>
   </form>
 </div>
 
 <script>
-// Listen for settings updates from other tabs/windows
-window.addEventListener('storage', function(e) {
-  if (e.key === 'settings_updated') {
-    // Reload page to get fresh settings (time slots, max people, etc.)
-    window.location.reload();
-  }
-});
+  // Listen for settings updates from other tabs/windows
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'settings_updated') {
+      // Reload page to get fresh settings (time slots, max people, etc.)
+      window.location.reload();
+    }
+  });
 
-// Use Flatpickr to get per-day disable support and better UX
+  // Use Flatpickr to get per-day disable support and better UX
 </script>
 
 <!-- Flatpickr CSS/JS (CDN). If offline, flatpickr will fail gracefully and native input will be used. -->
@@ -69,7 +75,8 @@ window.addEventListener('storage', function(e) {
 <style>
   /* Grey out disabled dates and show not-allowed cursor */
   .flatpickr-day.flatpickr-disabled {
-    color: #9CA3AF !important; /* gray-400 */
+    color: #9CA3AF !important;
+    /* gray-400 */
     cursor: not-allowed !important;
     text-decoration: line-through;
     opacity: 0.65;
@@ -77,154 +84,162 @@ window.addEventListener('storage', function(e) {
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  const dateInput = document.getElementById('booking_date');
+  document.addEventListener('DOMContentLoaded', function () {
+    const dateInput = document.getElementById('booking_date');
     // const noticeEl = document.getElementById('unavailableDatesNotice');
 
-  // Config from server-side template
-  const minDate = '{{ min_date }}';
-  const maxDate = '{{ max_date }}';
+    // Config from server-side template
+    const minDate = '{{ min_date }}';
+    const maxDate = '{{ max_date }}';
 
-  // Fetch unavailable dates from backend, then initialize flatpickr
-  async function initDatepicker() {
-    let disabledDates = [];
-    try {
-      const res = await fetch('/fully_booked_dates');
-      if (res.ok) {
-        const json = await res.json();
-        disabledDates = (json.fully_booked_dates || []).slice();
-      }
-    } catch (err) {
-      console.error('Failed to fetch fully filled dates', err);
-    }
+    // Initialize flatpickr immediately, then fetch unavailable dates asynchronously
+    function initDatepicker() {
+      let fpInstance = null;
+      let disabledDates = [];
 
-    // Initialize flatpickr on the input
-    try {
-      const fp = flatpickr(dateInput, {
-        // Use altInput to show dd-mm-yyyy while keeping ISO value for form submission
-        altInput: true,
-        altFormat: 'd-m-Y',
-        dateFormat: 'Y-m-d',
-        allowInput: false,
-        minDate: minDate,
-        maxDate: maxDate,
-        disable: disabledDates,
-        disableMobile: true,
-        // when date changes, update slot availability
-        onChange: function(selectedDates, dateStr, instance) {
-          if (!dateStr) return;
-          if (disabledDates.indexOf(dateStr) !== -1) {
-            alert('Selected date is fully booked. Please choose another date.');
-            instance.clear();
-            updateSlotAvailability(null);
-            return;
-          }
-          updateSlotAvailability(dateStr);
-        }
-      });
-      // Wire calendar button to open the picker
-      const calBtn = document.getElementById('booking_date_btn');
-      if (calBtn) {
-        calBtn.addEventListener('click', function() { fp.open(); });
-      }
-    } catch (err) {
-      console.error('Flatpickr init failed, falling back to native date input', err);
-      // Fallback: set min/max attributes on native input
+      // 1. Initialize flatpickr immediately with empty disabled list
       try {
-        dateInput.setAttribute('type', 'date');
-        dateInput.setAttribute('min', minDate);
-        dateInput.setAttribute('max', maxDate);
-      } catch (e) {}
-    }
-  }
+        fpInstance = flatpickr(dateInput, {
+          altInput: true,
+          altFormat: 'd-m-Y',
+          dateFormat: 'Y-m-d',
+          allowInput: false,
+          minDate: minDate,
+          maxDate: maxDate,
+          disable: [], // Start empty, update later
+          disableMobile: true,
+          onChange: function (selectedDates, dateStr, instance) {
+            if (!dateStr) return;
+            // Native flatpickr disabling prevents selection, but we keep this check just in case
+            // checking against the live config which is updated after fetch
+            const currentDisabled = instance.config.disable || [];
+            if (currentDisabled.some(d => d === dateStr)) {
+              alert('Selected date is fully booked. Please choose another date.');
+              instance.clear();
+              updateSlotAvailability(null);
+              return;
+            }
+            updateSlotAvailability(dateStr);
+          }
+        });
 
-  initDatepicker();
-});
+        // Wire calendar button
+        const calBtn = document.getElementById('booking_date_btn');
+        if (calBtn) {
+          calBtn.addEventListener('click', function () { fpInstance.open(); });
+        }
+      } catch (err) {
+        console.error('Flatpickr init failed', err);
+        // Fallback
+        try {
+          dateInput.setAttribute('type', 'date');
+          dateInput.setAttribute('min', minDate);
+          dateInput.setAttribute('max', maxDate);
+        } catch (e) { }
+      }
+
+      // 2. Fetch unavailable dates in background
+      fetch('/fully_booked_dates')
+        .then(res => res.json())
+        .then(data => {
+          if (data.fully_booked_dates && fpInstance) {
+            disabledDates = data.fully_booked_dates;
+            // Update the calendar instance with new disabled dates
+            fpInstance.set('disable', disabledDates);
+            // Redraw to reflect changes immediately
+            fpInstance.redraw();
+          }
+        })
+        .catch(err => console.error('Failed to fetch fully filled dates', err));
+    }
+
+    initDatepicker();
+  });
 </script>
 
 <script>
-// Keep a map of slot availability for the selected date
-let slotAvailMap = {};
+  // Keep a map of slot availability for the selected date
+  let slotAvailMap = {};
 
-async function updateSlotAvailability(day) {
-  const slotSelect = document.getElementById('slot-select');
-  const groupSizeInput = document.querySelector('input[name="group_size"]');
-  // Reset all options if no day provided
-  if (!slotSelect) return;
-  if (!day) {
-    // enable all options
-    Array.from(slotSelect.options).forEach(opt => {
-      opt.disabled = false;
-      opt.style.color = '';
-    });
-    if (groupSizeInput) {
-      // reset max to original calculated value (based on settings)
-      groupSizeInput.removeAttribute('max');
-    }
-    slotAvailMap = {};
-    return;
-  }
-
-    try {
-    const res = await fetch('/slot_availability?day=' + encodeURIComponent(day));
-    if (!res.ok) {
-      console.error('Failed to fetch slot availability');
-      return;
-    }
-    const json = await res.json();
-    slotAvailMap = json || {};
-
-    // Update slot options
-    Array.from(slotSelect.options).forEach(opt => {
-      const val = opt.value;
-      const info = slotAvailMap[val];
-      if (info && info.full) {
-        opt.disabled = true;
-        opt.style.color = '#9CA3AF';
-      } else {
+  async function updateSlotAvailability(day) {
+    const slotSelect = document.getElementById('slot-select');
+    const groupSizeInput = document.querySelector('input[name="group_size"]');
+    // Reset all options if no day provided
+    if (!slotSelect) return;
+    if (!day) {
+      // enable all options
+      Array.from(slotSelect.options).forEach(opt => {
         opt.disabled = false;
         opt.style.color = '';
+      });
+      if (groupSizeInput) {
+        // reset max to original calculated value (based on settings)
+        groupSizeInput.removeAttribute('max');
       }
-    });
-
-    // If current selection is disabled, pick first available
-    if (slotSelect.value) {
-      const curOpt = slotSelect.options[slotSelect.selectedIndex];
-      if (curOpt && curOpt.disabled) {
-        // choose first available
-        const avail = Array.from(slotSelect.options).find(o => !o.disabled);
-        if (avail) slotSelect.value = avail.value;
-        else slotSelect.value = '';
-      }
+      slotAvailMap = {};
+      return;
     }
 
-    // Update group_size max to available seats for selected slot if possible
-    if (groupSizeInput && slotSelect.value) {
-      const selInfo = slotAvailMap[slotSelect.value];
-      if (selInfo) {
-        // allow up to available seats (but not exceed original templated max)
-        const avail = selInfo.available || 0;
-        if (avail > 0) {
-          groupSizeInput.max = avail;
+    try {
+      const res = await fetch('/slot_availability?day=' + encodeURIComponent(day));
+      if (!res.ok) {
+        console.error('Failed to fetch slot availability');
+        return;
+      }
+      const json = await res.json();
+      slotAvailMap = json || {};
+
+      // Update slot options
+      Array.from(slotSelect.options).forEach(opt => {
+        const val = opt.value;
+        const info = slotAvailMap[val];
+        if (info && info.full) {
+          opt.disabled = true;
+          opt.style.color = '#9CA3AF';
         } else {
-          groupSizeInput.max = 0;
+          opt.disabled = false;
+          opt.style.color = '';
+        }
+      });
+
+      // If current selection is disabled, pick first available
+      if (slotSelect.value) {
+        const curOpt = slotSelect.options[slotSelect.selectedIndex];
+        if (curOpt && curOpt.disabled) {
+          // choose first available
+          const avail = Array.from(slotSelect.options).find(o => !o.disabled);
+          if (avail) slotSelect.value = avail.value;
+          else slotSelect.value = '';
         }
       }
-    }
 
-    // When slot changes, update group size max accordingly
-    slotSelect.addEventListener('change', function() {
-      if (!slotAvailMap) return;
-      const info = slotAvailMap[this.value];
-      if (groupSizeInput) {
-        if (info) groupSizeInput.max = info.available || 0;
-        else groupSizeInput.removeAttribute('max');
+      // Update group_size max to available seats for selected slot if possible
+      if (groupSizeInput && slotSelect.value) {
+        const selInfo = slotAvailMap[slotSelect.value];
+        if (selInfo) {
+          // allow up to available seats (but not exceed original templated max)
+          const avail = selInfo.available || 0;
+          if (avail > 0) {
+            groupSizeInput.max = avail;
+          } else {
+            groupSizeInput.max = 0;
+          }
+        }
       }
-    });
 
-  } catch (err) {
-    console.error('Error updating slot availability', err);
+      // When slot changes, update group size max accordingly
+      slotSelect.addEventListener('change', function () {
+        if (!slotAvailMap) return;
+        const info = slotAvailMap[this.value];
+        if (groupSizeInput) {
+          if (info) groupSizeInput.max = info.available || 0;
+          else groupSizeInput.removeAttribute('max');
+        }
+      });
+
+    } catch (err) {
+      console.error('Error updating slot availability', err);
+    }
   }
-}
 </script>
 {% endblock %}

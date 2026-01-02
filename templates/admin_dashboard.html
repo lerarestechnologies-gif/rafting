@@ -3,47 +3,55 @@
 <div>
   <h1 class="text-2xl font-bold mb-4">
     {% if current_user.is_subadmin() %}
-      Sub-Admin Dashboard
+    Sub-Admin Dashboard
     {% else %}
-      Admin Dashboard
+    Admin Dashboard
     {% endif %}
   </h1>
 
   <div class="bg-white shadow rounded-lg p-4">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-      <div class="flex items-center gap-3 mb-3 md:mb-0">
-        <h2 class="text-lg font-semibold">
-          {% if current_user.is_subadmin() %}
-            Today & Tomorrow Bookings Overview (Confirmed Only)
-          {% else %}
+    <div class="flex flex-col md:flex-row md:items-center md:items-start justify-between mb-4">
+      <div class="flex flex-col gap-3 mb-3 md:mb-0 w-full">
+        <div class="flex justify-between items-center w-full">
+          <h2 class="text-lg font-semibold">
+            {% if is_subadmin %}
+            Bookings Overview
+            {% else %}
             All Bookings
+            {% endif %}
+          </h2>
+
+          {% if not is_subadmin %}
+          <!-- Admin Export Button aligned right -->
+          <button onclick="exportAllBookingsToPDF()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+            <span>📄</span>
+            <span>Export to PDF</span>
+          </button>
           {% endif %}
-        </h2>
-        <button onclick="exportAllBookingsToPDF()" 
-          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
-          <span>📄</span>
-          <span>Export to PDF</span>
-        </button>
-      </div>
-        {% if not current_user.is_subadmin() %}
+        </div>
+
+        {% if not is_subadmin %}
         <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
           <!-- From date -->
           <div style="display:flex; align-items:center; gap:8px; min-width:180px;">
             <label for="fromDate" class="text-sm font-medium text-gray-700">From:</label>
-            <input type="date" id="fromDate" name="fromDate" value="{{ filter_from|default('') }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+            <input type="date" id="fromDate" name="fromDate" value="{{ filter_from|default('') }}"
+              class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
           </div>
           <!-- To date -->
           <div style="display:flex; align-items:center; gap:8px; min-width:180px;">
             <label for="toDate" class="text-sm font-medium text-gray-700">To:</label>
-            <input type="date" id="toDate" name="toDate" value="{{ filter_to|default('') }}" class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
+            <input type="date" id="toDate" name="toDate" value="{{ filter_to|default('') }}"
+              class="border border-gray-300 rounded px-3 py-1.5 text-sm" />
           </div>
           <!-- Slot filter -->
           <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
             <label for="slotFilter" class="text-sm font-medium text-gray-700">Slot:</label>
             <select id="slotFilter" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
               <option value="">All Slots</option>
-              {% for s in (settings.time_slots if settings and settings.time_slots else ['7:00–9:00','10:00–12:00','13:00–15:00','15:30–17:30']) %}
-              <option value="{{ s }}" {% if filter_slot == s %}selected{% endif %}>{{ s }}</option>
+              {% for s in (settings.time_slots if settings and settings.time_slots else []) %}
+              <option value="{{ s }}" {% if filter_slot==s %}selected{% endif %}>{{ s }}</option>
               {% endfor %}
             </select>
           </div>
@@ -52,444 +60,538 @@
             <label for="statusFilter" class="text-sm font-medium text-gray-700">Status:</label>
             <select id="statusFilter" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
               <option value="">All</option>
-              <option value="Confirmed" {% if filter_status == 'Confirmed' %}selected{% endif %}>Confirmed</option>
-              <option value="Pending" {% if filter_status == 'Pending' %}selected{% endif %}>Pending</option>
-              <option value="Cancelled" {% if filter_status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+              <option value="Confirmed" {% if filter_status=='Confirmed' %}selected{% endif %}>Confirmed</option>
+              <option value="Pending" {% if filter_status=='Pending' %}selected{% endif %}>Pending</option>
+              <option value="Cancelled" {% if filter_status=='Cancelled' %}selected{% endif %}>Cancelled</option>
             </select>
           </div>
-          <!-- force break so buttons sit below -->
+          <!-- force break -->
           <div style="flex-basis:100%; height:0;"></div>
           <!-- Buttons below filters -->
           <div style="width:100%; display:flex; justify-content:flex-end; gap:8px;">
-            <button onclick="applyFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm">Apply</button>
-            <button onclick="clearFilters()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm">Clear</button>
+            <button onclick="applyFilters()"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm">Apply</button>
+            <button onclick="clearFilters()"
+              class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-sm">Clear</button>
           </div>
         </div>
         {% endif %}
+      </div>
     </div>
-    
-    <!-- Booking Count -->
-    <div class="mb-3 text-sm text-gray-600">
-      <span id="bookingCount">{{ bookings|length }}</span> booking{{ 's' if bookings|length != 1 else '' }} found
-      {% if current_user.is_subadmin() %}
-        <span class="text-blue-600">(Today & Tomorrow only)</span>
-      {% elif selected_date %}
+
+    <!-- Tables -->
+    <div class="overflow-x-auto">
+      {% if is_subadmin %}
+      <!-- Sub-Admin View: Today & Tomorrow Separate Tables -->
+
+      <!-- TODAY -->
+      <h3 class="text-md font-bold mb-2 text-teal-700">Today's Bookings ({{ bookings_today|length }})</h3>
+      <table class="min-w-full border border-gray-300 rounded mb-6">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="px-4 py-2 border">Name</th>
+            <th class="px-4 py-2 border">Phone Number</th>
+            <th class="px-4 py-2 border">Email</th>
+            <th class="px-4 py-2 border">Date</th>
+            <th class="px-4 py-2 border">Slot</th>
+            <th class="px-4 py-2 border">Group Size</th>
+            <th class="px-4 py-2 border">Rafts</th>
+            <th class="px-4 py-2 border">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings_today %}
+          <tr class="text-center border-t">
+            <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
+            <td class="border px-4 py-2" title="{{ b.phone }}">{{ b.phone | format_phone }}</td>
+            <td class="border px-4 py-2">{{ b.email or "-" }}</td>
+            <td class="border px-4 py-2">{{ b.date }}</td>
+            <td class="border px-4 py-2">{{ b.slot }}</td>
+            <td class="border px-4 py-2">{{ b.group_size }}</td>
+            <td class="border px-4 py-2">
+              {% if b.raft_allocations %}
+              🛶 {{ b.raft_allocations | join(', ') }}
+              {% else %}
+              -
+              {% endif %}
+            </td>
+            <td class="border px-4 py-2">
+              <span class="text-green-600 font-semibold">{{ b.status }}</span>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-4 text-gray-500">No confirmed bookings for today.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- TOMORROW -->
+      <h3 class="text-md font-bold mb-2 text-indigo-700">Tomorrow's Bookings ({{ bookings_tomorrow|length }})</h3>
+      <table class="min-w-full border border-gray-300 rounded">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="px-4 py-2 border">Name</th>
+            <th class="px-4 py-2 border">Phone Number</th>
+            <th class="px-4 py-2 border">Email</th>
+            <th class="px-4 py-2 border">Date</th>
+            <th class="px-4 py-2 border">Slot</th>
+            <th class="px-4 py-2 border">Group Size</th>
+            <th class="px-4 py-2 border">Rafts</th>
+            <th class="px-4 py-2 border">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings_tomorrow %}
+          <tr class="text-center border-t">
+            <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
+            <td class="border px-4 py-2" title="{{ b.phone }}">{{ b.phone | format_phone }}</td>
+            <td class="border px-4 py-2">{{ b.email or "-" }}</td>
+            <td class="border px-4 py-2">{{ b.date }}</td>
+            <td class="border px-4 py-2">{{ b.slot }}</td>
+            <td class="border px-4 py-2">{{ b.group_size }}</td>
+            <td class="border px-4 py-2">
+              {% if b.raft_allocations %}
+              🛶 {{ b.raft_allocations | join(', ') }}
+              {% else %}
+              -
+              {% endif %}
+            </td>
+            <td class="border px-4 py-2">
+              <span class="text-green-600 font-semibold">{{ b.status }}</span>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-4 text-gray-500">No confirmed bookings for tomorrow.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% else %}
+      <!-- Admin View: Single Table (Filtered) -->
+      <div class="mb-3 text-sm text-gray-600">
+        <span id="bookingCount">{{ bookings|length }}</span> booking{{ 's' if bookings|length != 1 else '' }} found
+        {% if filter_from and filter_to and filter_from == filter_to and filter_from == now_str %}
+        <span class="text-blue-600">(Today)</span>
+        {% elif filter_from or filter_to %}
         <span class="text-blue-600">(filtered)</span>
+        {% endif %}
+      </div>
+
+      <table class="min-w-full border border-gray-300 rounded">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="px-4 py-2 border">Name</th>
+            <th class="px-4 py-2 border">Phone Number</th>
+            <th class="px-4 py-2 border">Email</th>
+            <th class="px-4 py-2 border">Date</th>
+            <th class="px-4 py-2 border">Booked On</th>
+            <th class="px-4 py-2 border">Slot</th>
+            <th class="px-4 py-2 border">Group Size</th>
+            <th class="px-4 py-2 border">Rafts</th>
+            <th class="px-4 py-2 border">Status</th>
+            <th class="px-4 py-2 border">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr class="text-center border-t">
+            <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
+            <td class="border px-4 py-2" title="{{ b.phone }}">{{ b.phone | format_phone }}</td>
+            <td class="border px-4 py-2">{{ b.email or "-" }}</td>
+            <td class="border px-4 py-2">{{ b.date }}</td>
+            <td class="border px-4 py-2">{{ b.created_at_ist }}</td>
+            <td class="border px-4 py-2">{{ b.slot }}</td>
+            <td class="border px-4 py-2">{{ b.group_size }}</td>
+            <td class="border px-4 py-2">
+              {% if b.raft_allocations %}
+              🛶 {{ b.raft_allocations | join(', ') }}
+              {% else %}
+              -
+              {% endif %}
+            </td>
+            <td class="border px-4 py-2">
+              {% if b.status == 'Cancelled' %}
+              <span class="text-red-500 font-semibold">Cancelled</span>
+              {% elif 'Pending' in b.status %}
+              <span class="text-yellow-600 font-semibold">{{ b.status }}</span>
+              {% else %}
+              <span class="text-green-600 font-semibold">{{ b.status }}</span>
+              {% endif %}
+            </td>
+            <td class="border px-4 py-2">
+              <button onclick="cancelBooking('{{ b._id }}')"
+                class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
+              <button onclick="promptPostpone(event, '{{ b._id }}')"
+                class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
       {% endif %}
     </div>
-    
-    <div class="overflow-x-auto">
-    <table class="min-w-full border border-gray-300 rounded">
-      <thead>
-        <tr class="bg-gray-100">
-          <th class="px-4 py-2 border">Name</th>
-          <th class="px-4 py-2 border">Phone Number</th>
-          <th class="px-4 py-2 border">Email</th>
-          <th class="px-4 py-2 border">Date</th>
-          <th class="px-4 py-2 border">Booked On</th>
-          <th class="px-4 py-2 border">Slot</th>
-          <th class="px-4 py-2 border">Group Size</th>
-          <th class="px-4 py-2 border">Rafts</th>
-          <th class="px-4 py-2 border">Status</th>
-          {% if not current_user.is_subadmin() %}
-          <th class="px-4 py-2 border">Actions</th>
-          {% endif %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for b in bookings %}
-        <tr class="text-center border-t">
-          <td class="border px-4 py-2">{{ b.user_name or b.name or "Unknown" }}</td>
-          <td class="border px-4 py-2">{{ b.phone | format_phone }}</td>
-          <td class="border px-4 py-2">{{ b.email or "-" }}</td>
-          <td class="border px-4 py-2">{{ b.date }}</td>
-          <td class="border px-4 py-2">{{ b.created_at_ist }}</td>
-          <td class="border px-4 py-2">{{ b.slot }}</td>
-          <td class="border px-4 py-2">{{ b.group_size }}</td>
-          <td class="border px-4 py-2">
-            {% if b.raft_allocations %}
-              🛶 {{ b.raft_allocations | join(', ') }}
-            {% else %}
-              -
-            {% endif %}
-          </td>
-          <td class="border px-4 py-2">
-            {% if b.status == 'Cancelled' %}
-              <span class="text-red-500 font-semibold">Cancelled</span>
-            {% elif 'Pending' in b.status %}
-              <span class="text-yellow-600 font-semibold">{{ b.status }}</span>
-            {% else %}
-              <span class="text-green-600 font-semibold">{{ b.status }}</span>
-            {% endif %}
-          </td>
-          {% if not current_user.is_subadmin() %}
-          <td class="border px-4 py-2">
-            <button onclick="cancelBooking('{{ b._id }}')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
-            <button onclick="promptPostpone(event, '{{ b._id }}')" class="bg-yellow-500 text-white px-2 py-1 rounded ml-2">Postpone</button>
-          </td>
-          {% endif %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    
-    {% if not bookings %}
-      <div class="text-center py-8 text-gray-500">
-        <p class="text-lg">No bookings found</p>
-        <p class="text-sm mt-2">
-          {% if current_user.is_subadmin() %}
-            No confirmed bookings for today or tomorrow.
-          {% elif selected_date %}
-            Try adjusting your date filter or 
-            <button onclick="clearFilters()" class="text-blue-600 hover:underline">clear the filter</button> to see all bookings.
-          {% else %}
-            There are no bookings in the system yet.
-          {% endif %}
-        </p>
-      </div>
+  </div>
+
+  {% if not bookings %}
+  <div class="text-center py-8 text-gray-500">
+    <p class="text-lg">No bookings found</p>
+    <p class="text-sm mt-2">
+      {% if current_user.is_subadmin() %}
+      No confirmed bookings for today or tomorrow.
+      {% elif selected_date %}
+      Try adjusting your date filter or
+      <button onclick="clearFilters()" class="text-blue-600 hover:underline">clear the filter</button> to see all
+      bookings.
+      {% else %}
+      There are no bookings in the system yet.
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<div id="occupancy" class="bg-white shadow rounded-lg p-4 mt-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold">
+      {% if current_user.is_subadmin() %}
+      Occupancy Overview
+      {% else %}
+      Occupancy Overview
+      {% endif %}
+    </h2>
+    {% if not current_user.is_subadmin() %}
+    <button onclick="exportOccupancyOverviewToPDF()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
+      <span>📄</span>
+      <span>Export to PDF</span>
+    </button>
     {% endif %}
   </div>
-
-  <div id="occupancy" class="bg-white shadow rounded-lg p-4 mt-6">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-lg font-semibold">
-        {% if current_user.is_subadmin() %}
-          Occupancy Overview
-        {% else %}
-          Occupancy Overview
-        {% endif %}
-      </h2>
-      {% if not current_user.is_subadmin() %}
-      <button onclick="exportOccupancyOverviewToPDF()" 
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2">
-        <span>📄</span>
-        <span>Export to PDF</span>
-      </button>
-      {% endif %}
+  <!-- Occupancy Overview: From / To date range (Admin and Sub-Admin) -->
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;" class="mb-3">
+    <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
+      <label for="occupancyFrom" class="font-medium">From:</label>
+      <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
     </div>
-    <!-- Occupancy Overview: From / To date range (Admin and Sub-Admin) -->
-    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;" class="mb-3">
-      <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
-        <label for="occupancyFrom" class="font-medium">From:</label>
-        <input type="date" id="occupancyFrom" class="border px-2 py-1 rounded" />
-      </div>
-      <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
-        <label for="occupancyTo" class="font-medium">To:</label>
-        <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
-      </div>
-      <div style="display:flex; gap:8px; align-items:center; flex-grow:1; justify-content:flex-end; min-width:220px;">
-        <button id="occupancyApply" class="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
-        <button id="occupancyClear" class="bg-gray-200 text-gray-800 px-3 py-1 rounded">Clear</button>
-        <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
-        <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
-      </div>
+    <div style="display:flex; align-items:center; gap:8px; min-width:200px;">
+      <label for="occupancyTo" class="font-medium">To:</label>
+      <input type="date" id="occupancyTo" class="border px-2 py-1 rounded" />
     </div>
-    <div id="occupancyDetail" class="grid gap-4"></div>
-    <div class="mt-3 text-sm text-gray-600">
-      <span class="inline-block w-4 h-4 bg-green-500 rounded mr-1 align-middle"></span> Available
-      <span class="inline-block w-4 h-4 bg-yellow-400 rounded ml-3 mr-1 align-middle"></span> Partial
-      <span class="inline-block w-4 h-4 bg-red-500 rounded ml-3 mr-1 align-middle"></span> Full
+    <div style="display:flex; gap:8px; align-items:center; flex-grow:1; justify-content:flex-end; min-width:220px;">
+      <button id="occupancyApply" class="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
+      <button id="occupancyClear" class="bg-gray-200 text-gray-800 px-3 py-1 rounded">Clear</button>
+      <button id="refreshBtn" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh</button>
+      <span id="lastUpdated" class="text-sm text-gray-500 ml-4"></span>
     </div>
   </div>
+  <div id="occupancyDetail" class="grid gap-4"></div>
+  <div class="mt-3 text-sm text-gray-600">
+    <span class="inline-block w-4 h-4 bg-green-500 rounded mr-1 align-middle"></span> Available
+    <span class="inline-block w-4 h-4 bg-yellow-400 rounded ml-3 mr-1 align-middle"></span> Partial
+    <span class="inline-block w-4 h-4 bg-red-500 rounded ml-3 mr-1 align-middle"></span> Full
+  </div>
+</div>
 
 <script>
-const defaultCapacity = {{ settings.capacity if settings and settings.capacity is defined else 6 }};
-const raftsPerSlot = {{ settings.rafts_per_slot if settings and settings.rafts_per_slot is defined else 5 }};
-const timeSlots = {{ (settings.time_slots if settings and settings.time_slots else ['7:00–9:00', '10:00–12:00', '13:00–15:00', '15:30–17:30']) | tojson }};
+  const defaultCapacity = Number("{{ settings.get('capacity', 6) if settings else 6 }}");
+  const raftsPerSlot = Number("{{ settings.get('rafts_per_slot', 5) if settings else 5 }}");
+  const timeSlots = {{ (settings.get('time_slots', []) if settings else[]) | tojson }};
 
-// Parse the start time of a slot into minutes since midnight for sorting.
-function parseTimeSlotStart(slot) {
-  if (!slot || typeof slot !== 'string') return 0;
-  // handle various dash characters and common separators
-  const delimMatch = slot.match(/–|—|-|to/);
-  const delim = delimMatch ? delimMatch[0] : null;
-  const parts = delim ? slot.split(delim) : [slot];
-  const start = parts[0].trim();
+  // Parse the start time of a slot into minutes since midnight for sorting.
+  function parseTimeSlotStart(slot) {
+    if (!slot || typeof slot !== 'string') return 0;
+    // handle various dash characters and common separators
+    const delimMatch = slot.match(/–|—|-|to/);
+    const delim = delimMatch ? delimMatch[0] : null;
+    const parts = delim ? slot.split(delim) : [slot];
+    const start = parts[0].trim();
 
-  // Match patterns like "7:00", "07:00", "7", "7 AM", "7:30 PM"
-  const m = start.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
-  if (!m) return 0;
-  let hh = parseInt(m[1], 10);
-  const mm = m[2] ? parseInt(m[2], 10) : 0;
-  const ampm = m[3];
-  if (ampm) {
-    if (/pm/i.test(ampm) && hh !== 12) hh += 12;
-    if (/am/i.test(ampm) && hh === 12) hh = 0;
-  }
-  return hh * 60 + mm;
-}
-
-async function fetchOccupancy(from, to) {
-  let url = '/admin/occupancy_detail';
-  const params = new URLSearchParams();
-  if (from) params.append('from', from);
-  if (to) params.append('to', to);
-  if (params.toString()) url += '?' + params.toString();
-  const res = await fetch(url);
-  if (!res.ok) {
-    try {
-      const err = await res.json();
-      console.error('Occupancy fetch failed', err);
-    } catch (e) {
-      console.error('Occupancy fetch failed', res.status);
+    // Match patterns like "7:00", "07:00", "7", "7 AM", "7:30 PM"
+    const m = start.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+    if (!m) return 0;
+    let hh = parseInt(m[1], 10);
+    const mm = m[2] ? parseInt(m[2], 10) : 0;
+    const ampm = m[3];
+    if (ampm) {
+      if (/pm/i.test(ampm) && hh !== 12) hh += 12;
+      if (/am/i.test(ampm) && hh === 12) hh = 0;
     }
-    return {};
-  }
-  return await res.json();
-}
-
-function raftColor(occupancy, cap) {
-  // Ensure occupancy is non-negative
-  const safeOccupancy = Math.max(0, occupancy || 0);
-  if (safeOccupancy >= cap) return 'bg-red-500';
-  if (safeOccupancy > 0 && safeOccupancy < cap) return 'bg-yellow-400';
-  return 'bg-green-500';
-}
-
-function makeRaftSquare(raft) {
-  const span = document.createElement('span');
-  // Ensure occupancy is non-negative
-  const safeOccupancy = Math.max(0, raft.occupancy || 0);
-  const raftCapacity = raft.capacity || 6;
-  span.className = 'inline-block w-8 h-8 rounded mr-2 align-middle ' + raftColor(safeOccupancy, raftCapacity);
-  span.title = `Raft ${raft.raft_id} - ${safeOccupancy}/${raftCapacity} people`;
-  span.style.display = 'inline-block';
-  span.style.verticalAlign = 'middle';
-  span.style.cursor = 'default';
-  return span;
-}
-
-async function renderOccupancy(from, to) {
-  const data = await fetchOccupancy(from, to);
-  const container = document.getElementById('occupancyDetail');
-  container.innerHTML = '';
-
-  if (!data || Object.keys(data).length === 0) {
-    container.innerHTML = '<p class="text-gray-500 text-center py-4">No occupancy data available for the selected range.</p>';
-    const lastUpdatedEl = document.getElementById('lastUpdated');
-    if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-    return;
+    return hh * 60 + mm;
   }
 
-  // Data is grouped by date -> slot -> raft_list
-  const dates = Object.keys(data).sort();
-  for (const dateStr of dates) {
-    const dateHeader = document.createElement('h3');
-    dateHeader.className = 'text-md font-semibold mt-2 mb-2';
-    dateHeader.textContent = dateStr;
-    container.appendChild(dateHeader);
-
-    // Determine slot order for this date
-    const slotsForDate = Object.keys(data[dateStr] || {});
-    const slotOrder = [];
-    for (const s of timeSlots) if (slotsForDate.includes(s)) slotOrder.push(s);
-    const others = slotsForDate.filter(s => !timeSlots.includes(s));
-    others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
-    slotOrder.push(...others);
-
-    for (const slot of slotOrder) {
-      const rafts = data[dateStr][slot];
-      if (!Array.isArray(rafts) || rafts.length === 0) continue;
-
-      // Calculate slot-level aggregates
-      const bookedCount = rafts.reduce((acc, r) => acc + Math.max(0, r.occupancy || 0), 0);
-      const totalCapacity = (raftsPerSlot || rafts.length) * (rafts[0].capacity || defaultCapacity);
-      const available = Math.max(0, totalCapacity - bookedCount);
-      const percent = totalCapacity > 0 ? Math.round((bookedCount / totalCapacity) * 100) : 0;
-
-      const slotCard = document.createElement('div');
-      slotCard.className = 'p-3 border rounded';
-      const header = document.createElement('div');
-      header.innerHTML = `<strong>${slot}</strong> — ${bookedCount}/${totalCapacity} booked — ${available} available — ${percent}%`;
-      slotCard.appendChild(header);
-
-      const raftRow = document.createElement('div');
-      raftRow.className = 'mt-2';
-
-      // Render raft squares (maintain color coding)
-      for (const r of rafts) {
-        const safeR = { ...r, occupancy: Math.max(0, r.occupancy || 0), capacity: r.capacity || defaultCapacity };
-        const sq = makeRaftSquare(safeR);
-        raftRow.appendChild(sq);
+  async function fetchOccupancy(from, to) {
+    let url = '/admin/occupancy_detail';
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    if (params.toString()) url += '?' + params.toString();
+    const res = await fetch(url);
+    if (!res.ok) {
+      try {
+        const err = await res.json();
+        console.error('Occupancy fetch failed', err);
+      } catch (e) {
+        console.error('Occupancy fetch failed', res.status);
       }
-      slotCard.appendChild(raftRow);
-
-      const details = document.createElement('div');
-      details.className = 'mt-2 text-sm text-gray-700';
-      details.innerHTML = rafts.map(r => {
-        const occupancy = Math.max(0, r.occupancy || 0);
-        const specialTag = (r.is_special && occupancy > 0) ? ' (7-special)' : '';
-        return `Raft ${r.raft_id}: ${occupancy}/${r.capacity}${specialTag}`;
-      }).join('<br/>');
-      slotCard.appendChild(details);
-
-      container.appendChild(slotCard);
+      return {};
     }
+    return await res.json();
   }
 
-  const lastUpdatedEl = document.getElementById('lastUpdated');
-  if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  // Sort configured time slots chronologically (by start time)
-  if (Array.isArray(timeSlots) && timeSlots.length > 0) {
-    timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+  function raftColor(occupancy, cap) {
+    // Ensure occupancy is non-negative
+    const safeOccupancy = Math.max(0, occupancy || 0);
+    if (safeOccupancy >= cap) return 'bg-red-500';
+    if (safeOccupancy > 0 && safeOccupancy < cap) return 'bg-yellow-400';
+    return 'bg-green-500';
   }
-  
-  const fromInp = document.getElementById('occupancyFrom');
-  const toInp = document.getElementById('occupancyTo');
-  if (fromInp && toInp) {
-    const today = new Date().toISOString().slice(0,10);
-    // Default to today when both are empty
-    fromInp.value = today;
-    toInp.value = today;
-    renderOccupancy(fromInp.value, toInp.value);
 
-    // Refresh every 10 seconds for the current range
-    setInterval(() => {
-      const currentFrom = fromInp.value || today;
-      const currentTo = toInp.value || today;
-      renderOccupancy(currentFrom, currentTo);
-    }, 10000);
-
-    // Handle Apply button
-    const applyBtn = document.getElementById('occupancyApply');
-    if (applyBtn) {
-      applyBtn.addEventListener('click', () => {
-        const f = fromInp.value;
-        const t = toInp.value;
-        if (f && t && new Date(f) > new Date(t)) {
-          alert('From Date cannot be greater than To Date');
-          return;
-        }
-        renderOccupancy(f || today, t || today);
-      });
-    }
-
-    // Handle Clear button
-    const clearBtn = document.getElementById('occupancyClear');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        fromInp.value = today;
-        toInp.value = today;
-        renderOccupancy(today, today);
-      });
-    }
-
-    // Handle refresh button
-    const refreshBtn = document.getElementById('refreshBtn');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        const container = document.getElementById('occupancyDetail');
-        if (container) container.innerHTML = '';
-        renderOccupancy(fromInp.value || today, toInp.value || today);
-      });
-    }
+  function makeRaftSquare(raft) {
+    const span = document.createElement('span');
+    // Ensure occupancy is non-negative
+    const safeOccupancy = Math.max(0, raft.occupancy || 0);
+    const raftCapacity = raft.capacity || 6;
+    span.className = 'inline-block w-8 h-8 rounded mr-2 align-middle ' + raftColor(safeOccupancy, raftCapacity);
+    span.title = `Raft ${raft.raft_id} - ${safeOccupancy}/${raftCapacity} people`;
+    span.style.display = 'inline-block';
+    span.style.verticalAlign = 'middle';
+    span.style.cursor = 'default';
+    return span;
   }
-  
-  {% if not current_user.is_subadmin() %}
-  // Admin only: Date filter functionality for bookings
-  setupDateFilter();
-  {% endif %}
-});
 
-// Date Filter Functions
-function setupDateFilter() {
-  // Optional: Auto-apply filter when date is selected (uncomment if desired)
-  // const filterDate = document.getElementById('filterDate');
-  // if (filterDate) {
-  //   filterDate.addEventListener('change', function() {
-  //     if (filterDate.value) {
-  //       applyDateFilter();
-  //     }
-  //   });
-  // }
-}
-function applyFilters() {
-  const params = new URLSearchParams();
-  const from = document.getElementById('fromDate')?.value;
-  const to = document.getElementById('toDate')?.value;
-  const slot = document.getElementById('slotFilter')?.value;
-  const status = document.getElementById('statusFilter')?.value;
+  async function renderOccupancy(from, to) {
+    const data = await fetchOccupancy(from, to);
+    const container = document.getElementById('occupancyDetail');
+    container.innerHTML = '';
 
-  if (from) params.append('from', from);
-  if (to) params.append('to', to);
-  if (slot) params.append('slot', slot);
-  if (status) params.append('status', status);
-
-  if (from && to) {
-    const f = new Date(from);
-    const t = new Date(to);
-    if (f > t) {
-      alert('From Date cannot be greater than To Date');
+    if (!data || Object.keys(data).length === 0) {
+      container.innerHTML = '<p class="text-gray-500 text-center py-4">No occupancy data available for the selected range.</p>';
+      const lastUpdatedEl = document.getElementById('lastUpdated');
+      if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
       return;
     }
+
+    // Data is grouped by date -> slot -> raft_list
+    const dates = Object.keys(data).sort();
+    for (const dateStr of dates) {
+      const dateHeader = document.createElement('h3');
+      dateHeader.className = 'text-md font-semibold mt-2 mb-2';
+      dateHeader.textContent = dateStr;
+      container.appendChild(dateHeader);
+
+      // Determine slot order for this date
+      const slotsForDate = Object.keys(data[dateStr] || {});
+      const slotOrder = [];
+      for (const s of timeSlots) if (slotsForDate.includes(s)) slotOrder.push(s);
+      const others = slotsForDate.filter(s => !timeSlots.includes(s));
+      others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+      slotOrder.push(...others);
+
+      for (const slot of slotOrder) {
+        const rafts = data[dateStr][slot];
+        if (!Array.isArray(rafts) || rafts.length === 0) continue;
+
+        // Calculate slot-level aggregates
+        const bookedCount = rafts.reduce((acc, r) => acc + Math.max(0, r.occupancy || 0), 0);
+        const totalCapacity = (raftsPerSlot || rafts.length) * (rafts[0].capacity || defaultCapacity);
+        const available = Math.max(0, totalCapacity - bookedCount);
+        const percent = totalCapacity > 0 ? Math.round((bookedCount / totalCapacity) * 100) : 0;
+
+        const slotCard = document.createElement('div');
+        slotCard.className = 'p-3 border rounded';
+        const header = document.createElement('div');
+        header.innerHTML = `<strong>${slot}</strong> — ${bookedCount}/${totalCapacity} booked — ${available} available — ${percent}%`;
+        slotCard.appendChild(header);
+
+        const raftRow = document.createElement('div');
+        raftRow.className = 'mt-2';
+
+        // Render raft squares (maintain color coding)
+        for (const r of rafts) {
+          const safeR = { ...r, occupancy: Math.max(0, r.occupancy || 0), capacity: r.capacity || defaultCapacity };
+          const sq = makeRaftSquare(safeR);
+          raftRow.appendChild(sq);
+        }
+        slotCard.appendChild(raftRow);
+
+        const details = document.createElement('div');
+        details.className = 'mt-2 text-sm text-gray-700';
+        details.innerHTML = rafts.map(r => {
+          const occupancy = Math.max(0, r.occupancy || 0);
+          const specialTag = (r.is_special && occupancy > 0) ? ' (7-special)' : '';
+          return `Raft ${r.raft_id}: ${occupancy}/${r.capacity}${specialTag}`;
+        }).join('<br/>');
+        slotCard.appendChild(details);
+
+        container.appendChild(slotCard);
+      }
+    }
+
+    const lastUpdatedEl = document.getElementById('lastUpdated');
+    if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
   }
 
-  const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
-  window.location.href = url;
-}
+  document.addEventListener('DOMContentLoaded', function () {
+    // Sort configured time slots chronologically (by start time)
+    if (Array.isArray(timeSlots) && timeSlots.length > 0) {
+      timeSlots.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+    }
 
-function clearFilters() {
-  const fromEl = document.getElementById('fromDate');
-  const toEl = document.getElementById('toDate');
-  const slotEl = document.getElementById('slotFilter');
-  const statusEl = document.getElementById('statusFilter');
-  if (fromEl) fromEl.value = '';
-  if (toEl) toEl.value = '';
-  if (slotEl) slotEl.value = '';
-  if (statusEl) statusEl.value = '';
-  window.location.href = '/admin/dashboard';
-}
+    const fromInp = document.getElementById('occupancyFrom');
+    const toInp = document.getElementById('occupancyTo');
+    if (fromInp && toInp) {
+      const today = new Date().toISOString().slice(0, 10);
+      // Default to today when both are empty
+      fromInp.value = today;
+      toInp.value = today;
+      renderOccupancy(fromInp.value, toInp.value);
+
+      // Refresh every 10 seconds for the current range
+      setInterval(() => {
+        const currentFrom = fromInp.value || today;
+        const currentTo = toInp.value || today;
+        renderOccupancy(currentFrom, currentTo);
+      }, 10000);
+
+      // Handle Apply button
+      const applyBtn = document.getElementById('occupancyApply');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+          const f = fromInp.value;
+          const t = toInp.value;
+          if (f && t && new Date(f) > new Date(t)) {
+            alert('From Date cannot be greater than To Date');
+            return;
+          }
+          renderOccupancy(f || today, t || today);
+        });
+      }
+
+      // Handle Clear button
+      const clearBtn = document.getElementById('occupancyClear');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          fromInp.value = today;
+          toInp.value = today;
+          renderOccupancy(today, today);
+        });
+      }
+
+      // Handle refresh button
+      const refreshBtn = document.getElementById('refreshBtn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+          const container = document.getElementById('occupancyDetail');
+          if (container) container.innerHTML = '';
+          renderOccupancy(fromInp.value || today, toInp.value || today);
+        });
+      }
+    }
+
+    {% if not current_user.is_subadmin() %}
+    // Admin only: Date filter functionality for bookings
+    setupDateFilter();
+    {% endif %}
+  });
+
+  // Date Filter Functions
+  function setupDateFilter() {
+    // Optional: Auto-apply filter when date is selected (uncomment if desired)
+    // const filterDate = document.getElementById('filterDate');
+    // if (filterDate) {
+    //   filterDate.addEventListener('change', function() {
+    //     if (filterDate.value) {
+    //       applyDateFilter();
+    //     }
+    //   });
+    // }
+  }
+  function applyFilters() {
+    const params = new URLSearchParams();
+    const from = document.getElementById('fromDate')?.value;
+    const to = document.getElementById('toDate')?.value;
+    const slot = document.getElementById('slotFilter')?.value;
+    const status = document.getElementById('statusFilter')?.value;
+
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    if (slot) params.append('slot', slot);
+    if (status) params.append('status', status);
+
+    if (from && to) {
+      const f = new Date(from);
+      const t = new Date(to);
+      if (f > t) {
+        alert('From Date cannot be greater than To Date');
+        return;
+      }
+    }
+
+    const url = '/admin/dashboard' + (params.toString() ? '?' + params.toString() : '');
+    window.location.href = url;
+  }
+
+  function clearFilters() {
+    const fromEl = document.getElementById('fromDate');
+    const toEl = document.getElementById('toDate');
+    const slotEl = document.getElementById('slotFilter');
+    const statusEl = document.getElementById('statusFilter');
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    if (slotEl) slotEl.value = '';
+    if (statusEl) statusEl.value = '';
+    window.location.href = '/admin/dashboard';
+  }
 </script>
 
-  </div>
+
 
 <script>
-async function cancelBooking(id) {
-  {% if current_user.is_subadmin() %}
-  alert('Access denied. Sub-Admin cannot cancel bookings.');
-  return;
-  {% endif %}
-  if (!confirm("Are you sure you want to cancel this booking?")) return;
-  try {
-    const res = await fetch(`/admin/cancel_booking/${id}`, { method: "POST" });
-    const data = await res.json();
-    alert(data.message || data.error || "Cancelled");
-    
-    // Refresh occupancy overview if it's displayed
-    const fromEl = document.getElementById('occupancyFrom');
-    const toEl = document.getElementById('occupancyTo');
-    if (fromEl && toEl) {
-      renderOccupancy(fromEl.value, toEl.value);
+  async function cancelBooking(id) {
+    {% if current_user.is_subadmin() %}
+    alert('Access denied. Sub-Admin cannot cancel bookings.');
+    return;
+    {% endif %}
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
+    try {
+      const res = await fetch(`/admin/cancel_booking/${id}`, { method: "POST" });
+      const data = await res.json();
+      alert(data.message || data.error || "Cancelled");
+
+      // Refresh occupancy overview if it's displayed
+      const fromEl = document.getElementById('occupancyFrom');
+      const toEl = document.getElementById('occupancyTo');
+      if (fromEl && toEl) {
+        renderOccupancy(fromEl.value, toEl.value);
+      }
+
+      location.reload();
+    } catch (err) {
+      alert("Cancel failed: " + err.message);
     }
-    
-    location.reload();
-  } catch (err) {
-    alert("Cancel failed: " + err.message);
   }
-}
 
-function showToast(message, type = 'success') {
-  const toast = document.createElement('div');
-  toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
-    type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-  }`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.transition = 'opacity 0.3s';
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
+  function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+      }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.transition = 'opacity 0.3s';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
 
-function showPostponeModal(id, currentDate, currentSlot) {
-  const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-  modal.innerHTML = `
+  function showPostponeModal(id, currentDate, currentSlot) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
     <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
       <h3 class="text-xl font-bold mb-4">Postpone Booking</h3>
       <div class="mb-4">
@@ -500,9 +602,9 @@ function showPostponeModal(id, currentDate, currentSlot) {
         <label class="block text-sm font-medium mb-2">New Time Slot:</label>
         <select id="postponeSlot" class="w-full border px-3 py-2 rounded" required>
           <option value="">Select a slot</option>
-          ${(timeSlots || []).map(slot => 
-            `<option value="${slot}" ${slot === currentSlot ? 'selected' : ''}>${slot}</option>`
-          ).join('')}
+          ${(timeSlots || []).map(slot =>
+      `<option value="${slot}" ${slot === currentSlot ? 'selected' : ''}>${slot}</option>`
+    ).join('')}
         </select>
       </div>
       <div class="flex gap-3 justify-end">
@@ -511,409 +613,406 @@ function showPostponeModal(id, currentDate, currentSlot) {
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
-  const dateInput = modal.querySelector('#postponeDate');
-  if (currentDate) {
-    dateInput.value = currentDate;
-  }
-  // Close on outside click
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.remove();
-  });
-}
-
-async function submitPostpone(id) {
-  const modal = document.querySelector('.fixed.bg-black');
-  const newDate = document.getElementById('postponeDate').value;
-  const newSlot = document.getElementById('postponeSlot').value;
-  
-  if (!newDate || !newSlot) {
-    showToast('Please fill in both date and slot', 'error');
-    return;
-  }
-  
-  // Validate date is in the future
-  const selectedDate = new Date(newDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (selectedDate < today) {
-    showToast('Please select a future date', 'error');
-    return;
-  }
-  
-  try {
-    const res = await fetch(`/admin/postpone_booking/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_date: newDate, new_slot: newSlot })
+    document.body.appendChild(modal);
+    const dateInput = modal.querySelector('#postponeDate');
+    if (currentDate) {
+      dateInput.value = currentDate;
+    }
+    // Close on outside click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
     });
-    const data = await res.json();
-    
-    if (!res.ok || data.error) {
-      showToast(data.error || 'Failed to postpone booking', 'error');
+  }
+
+  async function submitPostpone(id) {
+    const modal = document.querySelector('.fixed.bg-black');
+    const newDate = document.getElementById('postponeDate').value;
+    const newSlot = document.getElementById('postponeSlot').value;
+
+    if (!newDate || !newSlot) {
+      showToast('Please fill in both date and slot', 'error');
       return;
     }
-    
-    modal.remove();
-    showToast(data.message || 'Booking postponed successfully', 'success');
-    
-    // Refresh occupancy overview for both old and new dates
-    const fromEl = document.getElementById('occupancyFrom');
-    const toEl = document.getElementById('occupancyTo');
-    const today = new Date().toISOString().slice(0,10);
-    const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
-    const currentTo = (toEl && toEl.value) ? toEl.value : today;
-    renderOccupancy(currentFrom, currentTo);
 
-    // Also refresh single-day view for newDate briefly so admin sees update
-    if (newDate && (newDate < currentFrom || newDate > currentTo)) {
-      setTimeout(() => {
-        if (fromEl && toEl) {
-          fromEl.value = newDate;
-          toEl.value = newDate;
-        }
-        renderOccupancy(newDate, newDate);
-      }, 500);
+    // Validate date is in the future
+    const selectedDate = new Date(newDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (selectedDate < today) {
+      showToast('Please select a future date', 'error');
+      return;
     }
 
-    // Reload the page after a short delay to show updated booking list
-    setTimeout(() => {
-      location.reload();
-    }, 1500);
-  } catch (err) {
-    showToast("Postpone failed: " + err.message, 'error');
-  }
-}
-
-async function promptPostpone(event, id) {
-  {% if current_user.is_subadmin() %}
-  alert('Access denied. Sub-Admin cannot postpone bookings.');
-  return;
-  {% endif %}
-  // Get current booking details from the table row
-  // Note: Column order is: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
-  const row = (event && event.target) ? event.target.closest('tr') : null;
-  // Fallback: try to find row by booking id if event is not available
-  let currentRow = row;
-  if (!currentRow) {
-    currentRow = document.querySelector(`tr[data-booking-id="${id}"]`);
-  }
-  if (!currentRow) {
-    showToast('Unable to determine booking row for postpone action.', 'error');
-    return;
-  }
-  const currentDate = currentRow.querySelector('td:nth-child(4)')?.textContent.trim() || '';
-  const currentSlot = currentRow.querySelector('td:nth-child(5)')?.textContent.trim() || '';
-  showPostponeModal(id, currentDate, currentSlot);
-}
-
-// Listen for settings updates from other tabs/windows
-window.addEventListener('storage', function(e) {
-  if (e.key === 'settings_updated') {
-    // Reload page to get fresh settings (capacity, time slots, etc.)
-    console.log('Settings updated - refreshing dashboard...');
-    window.location.reload();
-  }
-  if (e.key === 'bookings_deleted') {
-    // Refresh occupancy overview when bookings are deleted
     try {
-      const deletedInfo = JSON.parse(e.newValue || '{}');
-      const deletedDate = deletedInfo.date;
+      const res = await fetch(`/admin/postpone_booking/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_date: newDate, new_slot: newSlot })
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showToast(data.error || 'Failed to postpone booking', 'error');
+        return;
+      }
+
+      modal.remove();
+      showToast(data.message || 'Booking postponed successfully', 'success');
+
+      // Refresh occupancy overview for both old and new dates
       const fromEl = document.getElementById('occupancyFrom');
       const toEl = document.getElementById('occupancyTo');
-      const today = new Date().toISOString().slice(0,10);
-
+      const today = new Date().toISOString().slice(0, 10);
       const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
       const currentTo = (toEl && toEl.value) ? toEl.value : today;
+      renderOccupancy(currentFrom, currentTo);
 
-      // Clear and re-fetch occupancy data container
-      const container = document.getElementById('occupancyDetail');
-      if (container) container.innerHTML = '';
+      // Also refresh single-day view for newDate briefly so admin sees update
+      if (newDate && (newDate < currentFrom || newDate > currentTo)) {
+        setTimeout(() => {
+          if (fromEl && toEl) {
+            fromEl.value = newDate;
+            toEl.value = newDate;
+          }
+          renderOccupancy(newDate, newDate);
+        }, 500);
+      }
 
-      if (deletedDate) {
-        // If deletedDate falls in current range, refresh
-        if (deletedDate >= currentFrom && deletedDate <= currentTo) {
+      // Reload the page after a short delay to show updated booking list
+      setTimeout(() => {
+        location.reload();
+      }, 1500);
+    } catch (err) {
+      showToast("Postpone failed: " + err.message, 'error');
+    }
+  }
+
+  async function promptPostpone(event, id) {
+    {% if current_user.is_subadmin() %}
+    alert('Access denied. Sub-Admin cannot postpone bookings.');
+    return;
+    {% endif %}
+    // Get current booking details from the table row
+    // Note: Column order is: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status, Actions
+    const row = (event && event.target) ? event.target.closest('tr') : null;
+    // Fallback: try to find row by booking id if event is not available
+    let currentRow = row;
+    if (!currentRow) {
+      currentRow = document.querySelector(`tr[data-booking-id="${id}"]`);
+    }
+    if (!currentRow) {
+      showToast('Unable to determine booking row for postpone action.', 'error');
+      return;
+    }
+    const currentDate = currentRow.querySelector('td:nth-child(4)')?.textContent.trim() || '';
+    const currentSlot = currentRow.querySelector('td:nth-child(5)')?.textContent.trim() || '';
+    showPostponeModal(id, currentDate, currentSlot);
+  }
+
+  // Listen for settings updates from other tabs/windows
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'settings_updated') {
+      // Reload page to get fresh settings (capacity, time slots, etc.)
+      console.log('Settings updated - refreshing dashboard...');
+      window.location.reload();
+    }
+    if (e.key === 'bookings_deleted') {
+      // Refresh occupancy overview when bookings are deleted
+      try {
+        const deletedInfo = JSON.parse(e.newValue || '{}');
+        const deletedDate = deletedInfo.date;
+        const fromEl = document.getElementById('occupancyFrom');
+        const toEl = document.getElementById('occupancyTo');
+        const today = new Date().toISOString().slice(0, 10);
+
+        const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
+        const currentTo = (toEl && toEl.value) ? toEl.value : today;
+
+        // Clear and re-fetch occupancy data container
+        const container = document.getElementById('occupancyDetail');
+        if (container) container.innerHTML = '';
+
+        if (deletedDate) {
+          // If deletedDate falls in current range, refresh
+          if (deletedDate >= currentFrom && deletedDate <= currentTo) {
+            renderOccupancy(currentFrom, currentTo);
+          }
+        } else {
+          // No specific date provided, refresh current view
           renderOccupancy(currentFrom, currentTo);
         }
-      } else {
-        // No specific date provided, refresh current view
+      } catch (err) {
+        const fromEl = document.getElementById('occupancyFrom');
+        const toEl = document.getElementById('occupancyTo');
+        const today = new Date().toISOString().slice(0, 10);
+        const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
+        const currentTo = (toEl && toEl.value) ? toEl.value : today;
+        const container = document.getElementById('occupancyDetail');
+        if (container) container.innerHTML = '';
         renderOccupancy(currentFrom, currentTo);
       }
-    } catch (err) {
-      const fromEl = document.getElementById('occupancyFrom');
-      const toEl = document.getElementById('occupancyTo');
-      const today = new Date().toISOString().slice(0,10);
-      const currentFrom = (fromEl && fromEl.value) ? fromEl.value : today;
-      const currentTo = (toEl && toEl.value) ? toEl.value : today;
-      const container = document.getElementById('occupancyDetail');
-      if (container) container.innerHTML = '';
-      renderOccupancy(currentFrom, currentTo);
     }
-  }
-});
+  });
 
-// PDF Export Functions
-function exportAllBookingsToPDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  
-  // Title
-  doc.setFontSize(18);
-  doc.text('All Bookings Report', 14, 15);
-  
-  // Date and time
-  doc.setFontSize(10);
-  const now = new Date();
-  doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
-  
-  // Filter info if applicable
-  const from = document.getElementById('fromDate')?.value;
-  const to = document.getElementById('toDate')?.value;
-  const slot = document.getElementById('slotFilter')?.value;
-  const status = document.getElementById('statusFilter')?.value;
-  let filterInfo = [];
-  if (from || to) {
-    filterInfo.push(`Date: ${from || ''}${from && to ? ' to ' + to : ''}`);
-  }
-  if (slot) filterInfo.push(`Slot: ${slot}`);
-  if (status) filterInfo.push(`Status: ${status}`);
-  if (filterInfo.length) {
-    doc.text(`Filtered by ${filterInfo.join(' | ')}`, 14, 27);
-  }
-  
-  // Table columns (removed 'Rafts' column for PDF export)
-  const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Status'];
-  
-  // Get booking data from table
-  const tableBody = document.querySelector('table tbody');
-  const tableRows = [];
-  
-  if (tableBody) {
-    const rows = tableBody.querySelectorAll('tr');
-    rows.forEach(row => {
-      const cells = row.querySelectorAll('td');
-      // Table columns in the page are: Name, Phone, Email, Date, Booked On, Slot, Group Size, Rafts, Status, (Actions)
-      // We want to export: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status
-      if (cells.length >= 9) {
-        const rowData = [
-          cells[0].textContent.trim() || 'Unknown', // Name
-          cells[1].textContent.trim() || '-',       // Phone
-          cells[2].textContent.trim() || '-',       // Email
-          cells[3].textContent.trim() || '-',       // Date
-          cells[5].textContent.trim() || '-',       // Slot (cell 5)
-          cells[6].textContent.trim() || '-',       // Group Size (cell 6)
-          cells[8].textContent.trim() || '-'        // Status (cell 8)
-        ];
-        tableRows.push(rowData);
-      }
-    });
-  }
-  
-  if (tableRows.length === 0) {
-    doc.text('No bookings found', 14, 35);
-  } else {
-    // Add table
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: filterInfo.length ? 32 : 27,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [66, 139, 202] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { top: filterInfo.length ? 32 : 27 }
-    });
-  }
-  
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount} - Raft Booking System`,
-      doc.internal.pageSize.getWidth() / 2,
-      doc.internal.pageSize.getHeight() - 10,
-      { align: 'center' }
-    );
-  }
-  
-  // Save PDF
-  const filename = (from || to || slot || status)
-    ? `All_Bookings_${(from || '')}${to ? '_to_' + to : ''}_${now.toISOString().slice(0,10)}.pdf`
-    : `All_Bookings_${now.toISOString().slice(0,10)}.pdf`;
-  doc.save(filename);
-}
+  // PDF Export Functions
+  function exportAllBookingsToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
 
-async function exportOccupancyOverviewToPDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  // Get current from/to from occupancy pickers
-  const from = document.getElementById('occupancyFrom')?.value || new Date().toISOString().slice(0, 10);
-  const to = document.getElementById('occupancyTo')?.value || from;
+    // Title
+    doc.setFontSize(18);
+    doc.text('All Bookings Report', 14, 15);
 
-  // Fetch occupancy data for the range
-  const occupancyData = await fetchOccupancy(from, to);
-  
-  // Title
-  doc.setFontSize(18);
-  doc.text('Occupancy Overview Report', 14, 15);
-  
-  // Date and time
-  doc.setFontSize(10);
-  const now = new Date();
-  doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
-  doc.text(`Report Range: ${from} to ${to}`, 14, 27);
-  
-  // Process occupancy data
-  const tableRows = [];
-  let totalRafts = 0;
-  let totalOccupancy = 0;
-  let totalCapacity = 0;
-  
+    // Date and time
+    doc.setFontSize(10);
+    const now = new Date();
+    doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
+
+    // Filter info if applicable
+    const from = document.getElementById('fromDate')?.value;
+    const to = document.getElementById('toDate')?.value;
+    const slot = document.getElementById('slotFilter')?.value;
+    const status = document.getElementById('statusFilter')?.value;
+    let filterInfo = [];
+    if (from || to) {
+      filterInfo.push(`Date: ${from || ''}${from && to ? ' to ' + to : ''}`);
+    }
+    if (slot) filterInfo.push(`Slot: ${slot}`);
+    if (status) filterInfo.push(`Status: ${status}`);
+    if (filterInfo.length) {
+      doc.text(`Filtered by ${filterInfo.join(' | ')}`, 14, 27);
+    }
+
+    // Table columns (removed 'Rafts' column for PDF export)
+    const tableColumn = ['Name', 'Phone', 'Email', 'Date', 'Slot', 'Group Size', 'Status'];
+
+    // Get booking data from table
+    const tableBody = document.querySelector('table tbody');
+    const tableRows = [];
+
+    if (tableBody) {
+      const rows = tableBody.querySelectorAll('tr');
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        // Table columns in the page are: Name, Phone, Email, Date, Booked On, Slot, Group Size, Rafts, Status, (Actions)
+        // We want to export: Name, Phone, Email, Date, Slot, Group Size, Rafts, Status
+        if (cells.length >= 9) {
+          const rowData = [
+            cells[0].textContent.trim() || 'Unknown', // Name
+            cells[1].textContent.trim() || '-',       // Phone
+            cells[2].textContent.trim() || '-',       // Email
+            cells[3].textContent.trim() || '-',       // Date
+            cells[5].textContent.trim() || '-',       // Slot (cell 5)
+            cells[6].textContent.trim() || '-',       // Group Size (cell 6)
+            cells[8].textContent.trim() || '-'        // Status (cell 8)
+          ];
+          tableRows.push(rowData);
+        }
+      });
+    }
+
+    if (tableRows.length === 0) {
+      doc.text('No bookings found', 14, 35);
+    } else {
+      // Add table
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: filterInfo.length ? 32 : 27,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [66, 139, 202] },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { top: filterInfo.length ? 32 : 27 }
+      });
+    }
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(
+        `Page ${i} of ${pageCount} - Raft Booking System`,
+        doc.internal.pageSize.getWidth() / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Save PDF
+    const filename = (from || to || slot || status)
+      ? `All_Bookings_${(from || '')}${to ? '_to_' + to : ''}_${now.toISOString().slice(0, 10)}.pdf`
+      : `All_Bookings_${now.toISOString().slice(0, 10)}.pdf`;
+    doc.save(filename);
+  }
+
+  async function exportOccupancyOverviewToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    // Get current from/to from occupancy pickers
+    const from = document.getElementById('occupancyFrom')?.value || new Date().toISOString().slice(0, 10);
+    const to = document.getElementById('occupancyTo')?.value || from;
+
+    // Fetch occupancy data for the range
+    const occupancyData = await fetchOccupancy(from, to);
+
+    // Title
+    doc.setFontSize(18);
+    doc.text('Occupancy Overview Report', 14, 15);
+
+    // Date and time
+    doc.setFontSize(10);
+    const now = new Date();
+    doc.text(`Generated: ${now.toLocaleString()}`, 14, 22);
+    doc.text(`Report Range: ${from} to ${to}`, 14, 27);
+
+    // Process occupancy data
+    const tableRows = [];
+    let totalRafts = 0;
+    let totalOccupancy = 0;
+    let totalCapacity = 0;
+
     if (occupancyData && Object.keys(occupancyData).length > 0) {
-    // occupancyData is grouped by date -> slot -> rafts
-    for (const [dateStr, slots] of Object.entries(occupancyData)) {
-      // Determine slot order: prefer configured `timeSlots`, then sort remaining by parsed start time
-      const slotsKeys = Object.keys(slots || {});
-      const slotOrder = [];
-      for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
-      const others = slotsKeys.filter(s => !timeSlots.includes(s));
-      others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
-      slotOrder.push(...others);
+      // occupancyData is grouped by date -> slot -> rafts
+      for (const [dateStr, slots] of Object.entries(occupancyData)) {
+        // Determine slot order: prefer configured `timeSlots`, then sort remaining by parsed start time
+        const slotsKeys = Object.keys(slots || {});
+        const slotOrder = [];
+        for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
+        const others = slotsKeys.filter(s => !timeSlots.includes(s));
+        others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+        slotOrder.push(...others);
 
-      for (const slot of slotOrder) {
-        const rafts = slots[slot];
-        if (!Array.isArray(rafts) || rafts.length === 0) continue;
-        const slotRafts = rafts.length;
-        const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
-        const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
-        const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
+        for (const slot of slotOrder) {
+          const rafts = slots[slot];
+          if (!Array.isArray(rafts) || rafts.length === 0) continue;
+          const slotRafts = rafts.length;
+          const slotOccupancy = rafts.reduce((sum, r) => sum + (r.occupancy || 0), 0);
+          const slotCapacity = rafts.reduce((sum, r) => sum + (r.capacity || defaultCapacity), 0);
+          const occupancyPercent = slotCapacity > 0 ? ((slotOccupancy / slotCapacity) * 100).toFixed(1) : 0;
 
-        tableRows.push([
-          dateStr,
-          slot,
-          slotRafts.toString(),
-          slotOccupancy.toString(),
-          (slotCapacity - slotOccupancy).toString(),
-          `${occupancyPercent}%`
-        ]);
+          tableRows.push([
+            dateStr,
+            slot,
+            slotRafts.toString(),
+            slotOccupancy.toString(),
+            (slotCapacity - slotOccupancy).toString(),
+            `${occupancyPercent}%`
+          ]);
 
-        totalRafts += slotRafts;
-        totalOccupancy += slotOccupancy;
-        totalCapacity += slotCapacity;
+          totalRafts += slotRafts;
+          totalOccupancy += slotOccupancy;
+          totalCapacity += slotCapacity;
+        }
       }
+
+      // Add summary row
+      const totalOccupancyPercent = totalCapacity > 0 ? ((totalOccupancy / totalCapacity) * 100).toFixed(1) : 0;
+      tableRows.push([
+        'TOTAL',
+        totalRafts.toString(),
+        totalOccupancy.toString(),
+        (totalCapacity - totalOccupancy).toString(),
+        `${totalOccupancyPercent}%`
+      ]);
     }
-    
-    // Add summary row
-    const totalOccupancyPercent = totalCapacity > 0 ? ((totalOccupancy / totalCapacity) * 100).toFixed(1) : 0;
-    tableRows.push([
-      'TOTAL',
-      totalRafts.toString(),
-      totalOccupancy.toString(),
-      (totalCapacity - totalOccupancy).toString(),
-      `${totalOccupancyPercent}%`
-    ]);
-  }
-  
-  if (tableRows.length === 0) {
-    doc.text('No occupancy data available for this date', 14, 35);
-  } else {
-    // Table columns
-    const tableColumn = ['Date', 'Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
-    
-    // Add table
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 32,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [66, 139, 202] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { top: 32 },
-      didDrawPage: function(data) {
-        // Highlight total row
-        if (data.pageNumber === data.pageCount) {
-          const lastRow = data.table.body[data.table.body.length - 1];
-          if (lastRow && lastRow[0] && lastRow[0].text === 'TOTAL') {
-            doc.setFillColor(220, 220, 220);
-            doc.rect(data.table.startX, lastRow.y, data.table.width, lastRow.height, 'F');
+
+    if (tableRows.length === 0) {
+      doc.text('No occupancy data available for this date', 14, 35);
+    } else {
+      // Table columns
+      const tableColumn = ['Date', 'Time Slot', 'Total Rafts', 'Occupied', 'Available', 'Occupancy %'];
+
+      // Add table
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 32,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [66, 139, 202] },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { top: 32 },
+        didDrawPage: function (data) {
+          // Highlight total row
+          if (data.pageNumber === data.pageCount) {
+            const lastRow = data.table.body[data.table.body.length - 1];
+            if (lastRow && lastRow[0] && lastRow[0].text === 'TOTAL') {
+              doc.setFillColor(220, 220, 220);
+              doc.rect(data.table.startX, lastRow.y, data.table.width, lastRow.height, 'F');
+            }
           }
         }
-      }
-    });
-    
-    // Add detailed raft information
-    let yPos = doc.lastAutoTable.finalY + 10;
-    if (yPos > doc.internal.pageSize.getHeight() - 30) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
-    doc.setFontSize(12);
-    doc.text('Detailed Raft Information', 14, yPos);
-    yPos += 8;
-    
-    doc.setFontSize(9);
-    // Detailed info grouped by date then slot (slot order matches summary)
-    for (const [dateStr, slots] of Object.entries(occupancyData)) {
-      const slotsKeys = Object.keys(slots || {});
-      const slotOrder = [];
-      for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
-      const others = slotsKeys.filter(s => !timeSlots.includes(s));
-      others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
-      slotOrder.push(...others);
+      });
 
-      for (const slot of slotOrder) {
-        const rafts = slots[slot];
-        if (!Array.isArray(rafts) || rafts.length === 0) continue;
-        if (yPos > doc.internal.pageSize.getHeight() - 40) {
-          doc.addPage();
-          yPos = 20;
-        }
-        doc.setFontSize(10);
-        doc.text(`${dateStr} — ${slot}:`, 14, yPos);
-        yPos += 6;
-        doc.setFontSize(8);
-        rafts.forEach(raft => {
-          if (yPos > doc.internal.pageSize.getHeight() - 20) {
+      // Add detailed raft information
+      let yPos = doc.lastAutoTable.finalY + 10;
+      if (yPos > doc.internal.pageSize.getHeight() - 30) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.text('Detailed Raft Information', 14, yPos);
+      yPos += 8;
+
+      doc.setFontSize(9);
+      // Detailed info grouped by date then slot (slot order matches summary)
+      for (const [dateStr, slots] of Object.entries(occupancyData)) {
+        const slotsKeys = Object.keys(slots || {});
+        const slotOrder = [];
+        for (const s of timeSlots) if (slotsKeys.includes(s)) slotOrder.push(s);
+        const others = slotsKeys.filter(s => !timeSlots.includes(s));
+        others.sort((a, b) => parseTimeSlotStart(a) - parseTimeSlotStart(b));
+        slotOrder.push(...others);
+
+        for (const slot of slotOrder) {
+          const rafts = slots[slot];
+          if (!Array.isArray(rafts) || rafts.length === 0) continue;
+          if (yPos > doc.internal.pageSize.getHeight() - 40) {
             doc.addPage();
             yPos = 20;
           }
-          const status = raft.occupancy >= raft.capacity ? 'Full' : 
-                        raft.occupancy > 0 ? 'Partial' : 'Available';
-          const special = raft.is_special ? ' (7-special)' : '';
-          doc.text(
-            `  Raft ${raft.raft_id}: ${raft.occupancy}/${raft.capacity} ${status}${special}`,
-            16,
-            yPos
-          );
-          yPos += 5;
-        });
-        yPos += 3;
+          doc.setFontSize(10);
+          doc.text(`${dateStr} — ${slot}:`, 14, yPos);
+          yPos += 6;
+          doc.setFontSize(8);
+          rafts.forEach(raft => {
+            if (yPos > doc.internal.pageSize.getHeight() - 20) {
+              doc.addPage();
+              yPos = 20;
+            }
+            const status = raft.occupancy >= raft.capacity ? 'Full' :
+              raft.occupancy > 0 ? 'Partial' : 'Available';
+            const special = raft.is_special ? ' (7-special)' : '';
+            doc.text(
+              `  Raft ${raft.raft_id}: ${raft.occupancy}/${raft.capacity} ${status}${special}`,
+              16,
+              yPos
+            );
+            yPos += 5;
+          });
+          yPos += 3;
+        }
       }
     }
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(
+        `Page ${i} of ${pageCount} - Raft Booking System`,
+        doc.internal.pageSize.getWidth() / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Save PDF
+    const filename = `Occupancy_Overview_${from}_to_${to}_${now.toISOString().slice(0, 10)}.pdf`;
+    doc.save(filename);
   }
-  
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount} - Raft Booking System`,
-      doc.internal.pageSize.getWidth() / 2,
-      doc.internal.pageSize.getHeight() - 10,
-      { align: 'center' }
-    );
-  }
-  
-  // Save PDF
-  const filename = `Occupancy_Overview_${from}_to_${to}_${now.toISOString().slice(0,10)}.pdf`;
-  doc.save(filename);
-}
 
 </script>
 {% endblock %}
-
-
-

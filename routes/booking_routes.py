@@ -77,6 +77,45 @@ def book():
             flash(f'Booking date must be between {min_date.isoformat()} and {max_date.isoformat()} (inclusive).', 'error')
             return redirect(url_for('booking.book'))
 
+        # NEW: Logic to prevent booking past slots for TODAY
+        # If booking_date is today, we must ensure the slot hasn't passed.
+        if booking_date == today:
+            now = datetime.now()
+            # Simple parser for slot start time (e.g. "7:00–9:00" -> 7, "15:30..." -> 15.5)
+            # This logic should match client-side parsing or be robust.
+            def parse_slot_start_hour_minutes(s):
+                # extracts "07:00" or "15:30"
+                # split by first non-digit char if not a colon? 
+                # Assuming format like "7:00-9:00" or "13:00-15:00"
+                try:
+                    # Clean string to get the start part
+                    start_str = s.split('–')[0].split('-')[0].split('to')[0].strip()
+                    # Parse "7:00" or "7"
+                    if ':' in start_str:
+                        hour, minute = map(int, start_str.split(':')[:2])
+                    else:
+                        hour = int(start_str)
+                        minute = 0
+                    
+                    # Handle PM logic if manual pm text exists, but typically our settings use 24h or clear format.
+                    # If the settings use 12h format (e.g. "3:30 PM"), we need to handle that.
+                    is_pm = 'pm' in start_str.lower()
+                    if is_pm and hour != 12:
+                        hour += 12
+                    
+                    return hour, minute
+                except:
+                    return 0, 0 # Fallback, allow if parse fails (risky but better than blocking valid)
+
+            slot_h, slot_m = parse_slot_start_hour_minutes(slot)
+            
+            # If current time > slot start time, block it. 
+            # (Optionally add buffer, e.g. forbid booking 30 mins before)
+            if now.hour > slot_h or (now.hour == slot_h and now.minute > slot_m):
+                flash('Cannot book a time slot that has already started or passed.', 'error')
+                return redirect(url_for('booking.book'))
+
+
         try:
             group_size = int(request.form.get('group_size'))
         except:
@@ -188,7 +227,28 @@ def slot_availability():
     res = {}
     from models.raft_model import ensure_rafts_for_date_slot as _ensure
     try:
+        # Check if day is today to filter passed slots
+        is_today = (day == date.today().isoformat())
+        now = datetime.now()
+        
         for s in slots:
+            # Check time logic if today
+            slot_passed = False
+            if is_today:
+                 try:
+                    start_str = s.split('–')[0].split('-')[0].split('to')[0].strip()
+                    if ':' in start_str:
+                        hh, mm = map(int, start_str.split(':')[:2])
+                    else:
+                        hh = int(start_str)
+                        mm = 0
+                    if 'pm' in start_str.lower() and hh != 12: hh += 12
+                    
+                    if now.hour > hh or (now.hour == hh and now.minute > mm):
+                        slot_passed = True
+                 except:
+                    pass
+
             # ensure rafts exist for this date/slot
             _ensure(db, day, s, rafts_per_slot, capacity)
             rafts = list(db.rafts.find({'day': day, 'slot': s}).sort('raft_id', 1).limit(rafts_per_slot))
@@ -201,6 +261,11 @@ def slot_availability():
                 total_occupancy += max(0, r.get('occupancy', 0))
             # Note: special raft handling in allocation may allow +1 seat for empty rafts; approximate available
             available = max(total_capacity - total_occupancy, 0)
+            
+            # If slot passed, mark as full (0 available)
+            if slot_passed:
+                available = 0
+
             res[s] = {
                 'available': available,
                 'full': available <= 0
@@ -281,17 +346,24 @@ def track_booking():
             return redirect(url_for('booking.track_booking'))
         
         db = current_app.mongo.db
-        cursor = find_latest_by_contact(db, email, phone)
-        booking = None
-        for b in cursor:
-            booking = b
-            break
-        if not booking:
+        # Updated to query ALL matches, not just latest
+        cursor = find_latest_by_contact(db, email, phone) 
+        # Note: find_latest_by_contact currently sorts and checks. 
+        # Ideally, we should use a new function `find_all_by_contact` or reuse the cursor if it wasn't limited to 1.
+        # Assuming `find_latest_by_contact` returns a mongo cursor (not find_one), we can iterate it. 
+        # Let's inspect `models/booking_model.py` carefully or just write the find query here to be safe.
+        
+        bookings = list(db.bookings.find({
+            '$or': [{'email': email}, {'phone': phone}]
+        }).sort('created_at', -1))
+        
+        if not bookings:
             flash('No booking found for that contact.', 'error')
             return redirect(url_for('booking.track_booking'))
         
         # Convert ObjectId to string for template rendering
-        booking['_id'] = str(booking.get('_id'))
-        
-        return render_template('track_booking_result.html', booking=booking)
+        for b in bookings:
+            b['_id'] = str(b.get('_id'))
+            
+        return render_template('track_booking_result.html', bookings=bookings)
     return render_template('track_booking.html')

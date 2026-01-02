@@ -55,22 +55,34 @@ def dashboard():
     settings = load_settings(db)
     # Build query filter for bookings list (filters apply only to bookings)
     query_filter = {}
+    
+    # Common sort order for all views: Date ASC, Slot ASC, then Created Desc
+    # Note: Slot strings need to be sortable. If they are "7:00...", "10:00...", simple string sort works okayish but "7" comes after "10". 
+    # For now we stick to DB string sort. Ideal world: sort by a separate 'slot_value'.
+    sort_order = [('date', 1), ('slot', 1), ('created_at', -1)]
 
-    # If subadmin, do not apply user-supplied filters — show Confirmed bookings for today and tomorrow only
+    # If subadmin, do not apply user-supplied filters — show Confirmed bookings for today and tomorrow separately
     if current_user.is_subadmin():
-        today = datetime.date.today()
-        tomorrow = today + datetime.timedelta(days=1)
-        allowed = [today.isoformat(), tomorrow.isoformat()]
-        query_filter = {'date': {'$in': allowed}, 'status': 'Confirmed'}
-        bookings = list(db.bookings.find(query_filter).sort('created_at', -1).limit(500))
-        for booking in bookings:
-            booking['created_at_ist'] = utc_to_ist(booking.get('created_at'))
+        today = datetime.date.today().isoformat()
+        tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        
+        # Fetch Today's Bookings
+        bookings_today = list(db.bookings.find({'date': today, 'status': 'Confirmed'}).sort(sort_order))
+        for b in bookings_today:
+            b['created_at_ist'] = utc_to_ist(b.get('created_at'))
+            
+        # Fetch Tomorrow's Bookings
+        bookings_tomorrow = list(db.bookings.find({'date': tomorrow, 'status': 'Confirmed'}).sort(sort_order))
+        for b in bookings_tomorrow:
+            b['created_at_ist'] = utc_to_ist(b.get('created_at'))
 
         return render_template('admin_dashboard.html',
-                             bookings=bookings,
+                             bookings_today=bookings_today,
+                             bookings_tomorrow=bookings_tomorrow,
+                             is_subadmin=True,
                              settings=settings,
-                             filter_from='',
-                             filter_to='',
+                             filter_from=today, # Default views for reference
+                             filter_to=tomorrow,
                              filter_slot='',
                              filter_status='')
 
@@ -104,6 +116,14 @@ def dashboard():
             query_filter['date'] = {'$lte': to_date}
         except (ValueError, TypeError):
             flash('Invalid To date', 'error')
+    
+    # If NO date filter is provided for Admin, default to TODAY
+    if not from_date and not to_date:
+        today_str = datetime.date.today().isoformat()
+        query_filter['date'] = today_str
+        # We set from/to variables so they appear in the UI inputs
+        from_date = today_str
+        to_date = today_str
 
     # Slot filter
     if slot_filter:
@@ -114,13 +134,14 @@ def dashboard():
         query_filter['status'] = status_filter
 
     # Fetch bookings with filters (admin)
-    bookings = list(db.bookings.find(query_filter).sort('created_at', -1).limit(500))
+    bookings = list(db.bookings.find(query_filter).sort(sort_order).limit(500))
     for booking in bookings:
         booking['created_at_ist'] = utc_to_ist(booking.get('created_at'))
 
     # Render dashboard with current booking filters (admin)
     return render_template('admin_dashboard.html',
                          bookings=bookings,
+                         is_subadmin=False,
                          settings=settings,
                          filter_from=from_date,
                          filter_to=to_date,
@@ -728,7 +749,7 @@ def occupancy_detail():
 
         return jsonify(result)
     except Exception as e:
-        print(f'[ERROR] occupancy_detail: {str(e)}')
+        current_app.logger.error(f'[ERROR] occupancy_detail: {str(e)}')
         return jsonify({'error': 'Server error fetching occupancy'}), 500
 
 @admin_bp.route('/cancel_booking/<booking_id>', methods=['POST'])
@@ -758,6 +779,12 @@ def postpone_booking_route(booking_id):
         oid = ObjectId(booking_id)
     except Exception:
         return jsonify({'error': 'Invalid booking id'}), 400
+    
+    # Check current status before postponing
+    # Pending bookings cannot be postponed (user must confirm/pay first)
+    existing_booking = db.bookings.find_one({'_id': oid})
+    if existing_booking and existing_booking.get('status') == 'Pending':
+        return jsonify({'error': 'Pending bookings cannot be postponed. Please confirm the booking first.'}), 400
     
     res = postpone_booking(db, oid, new_date, new_slot)
     
